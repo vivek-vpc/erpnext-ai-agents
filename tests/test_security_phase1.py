@@ -400,3 +400,55 @@ def test_netguard_says_why(monkeypatch):
     assert blocked_target("https://api.anthropic.com", resolve=lambda *a, **k: PUBLIC_IP) is None
     assert "could not be found" in blocked_target("https://no-such-host.invalid", resolve=lambda *a, **k: (_ for _ in ()).throw(OSError("nx")))
     assert "loopback" in blocked_target("http://localhost:11434", resolve=resolver("127.0.0.1"))
+
+
+def test_blocked_target_no_hostname():
+    assert blocked_target("http://") == "the address has no host name"
+    assert blocked_target("https:///") == "the address has no host name"
+
+
+def test_blocked_target_unreadable_resolver_entries():
+    def bad_resolve(host, *a, **k):
+        return [
+            (2, 1, 6, "", ("not-an-ip", 0)),          # ValueError
+            (2, 1, 6, "", ()),                        # IndexError
+            None,                                     # TypeError on info[4]
+        ]
+    assert "could not be found" in blocked_target("https://example.com", resolve=bad_resolve)
+
+
+def test_blocked_target_mixed_unreadable_and_ok_skips_bad():
+    def mixed(host, *a, **k):
+        return [
+            (2, 1, 6, "", ("bad", 0)),
+            (2, 1, 6, "", ("93.184.216.34", 0)),
+        ]
+    assert blocked_target("https://example.com", resolve=mixed) is None
+
+
+def test_ip_literals_blocked():
+    assert "link-local" in blocked_target("http://169.254.169.254/")
+    assert "private" in blocked_target("http://10.0.0.5:11434")
+
+
+def test_ipv4_mapped_ipv6_counts_as_loopback():
+    assert "loopback" in blocked_target("http://[::ffff:127.0.0.1]:11434")
+
+
+def test_name_resolves_to_public_and_private_is_refused():
+    assert "private" in blocked_target("https://mixed.example", resolve=resolver("93.184.216.34", "10.0.0.5"))
+
+
+def test_refuse_argument_allows_loopback_but_not_link_local():
+    assert blocked_target("http://localhost", refuse=("link-local",), resolve=resolver("127.0.0.1")) is None
+    assert "link-local" in blocked_target("http://169.254.169.254", refuse=("link-local",))
+
+
+def test_no_redirects_handles_object_without_attribute():
+    from erp_agents.core.netguard import no_redirects
+
+    class NoAttr:
+        __slots__ = ()
+
+    obj = NoAttr()
+    assert no_redirects(obj) is obj          # AttributeError path; returns the object unchanged
