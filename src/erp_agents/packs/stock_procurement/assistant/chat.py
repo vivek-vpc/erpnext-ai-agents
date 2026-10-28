@@ -1017,7 +1017,7 @@ class ChatService:
                       [f"How much {codes[0]} do we have?", f"Purchase orders for {codes[0]}"], codes)
 
     def _documents(self, plan: Plan, items: list[ItemInfo]) -> Answer:
-        today = date.today()
+        today = self.inventory.today()                               # the application's date (its clock and time zone), like every other answer: never the machine's
         since = None if (plan.status in ("open", "overdue") and not plan.period_given and not plan.docs) else today - timedelta(days=plan.since_days)
         code = plan.items[0].code if plan.items else None
         docs: list[dict] = []
