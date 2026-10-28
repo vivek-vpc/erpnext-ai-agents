@@ -10,6 +10,7 @@ from typing import Any, Optional
 
 from erp_agents.core.approvals.models import ACTION_DETAILS, ApprovalOption, ApprovalRequest, Section
 from ..inventory.analysis import _d, _n
+from ..templating import fill_template
 
 KIND_CHASE = "procurement.chase"
 KIND_RECEIPT = "procurement.receipt_check"
@@ -24,7 +25,7 @@ def _details() -> ApprovalOption:
 
 
 def fill(template: str, values: dict[str, Any]) -> str:
-    return " ".join(template.format_map(values).split())
+    return " ".join(fill_template(template, values).split())
 
 
 # ===================================================================== late deliveries

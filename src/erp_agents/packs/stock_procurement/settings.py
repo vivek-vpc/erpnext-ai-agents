@@ -12,6 +12,16 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from erp_agents.core.erp.base import DEFAULT_IN_TRANSIT, DEFAULT_STOCK_ADD, DEFAULT_STOCK_SUBTRACT, IN_TRANSIT_COLUMN, IN_TRANSIT_LABEL, STOCK_COLUMNS
 from erp_agents.core.policy import SystemSettings
+from .templating import TemplateError, check_template
+
+
+def _checked(setting: str, template: str, names: tuple[str, ...]) -> str:
+    """A message template as a setting: only {name} for the names it documents (templating.py), so the error names the setting and what is allowed."""
+    try:
+        check_template(template, names)
+    except TemplateError as exc:
+        raise ValueError(f"{setting}: {exc}") from None
+    return template
 
 
 class Policy(BaseModel):
@@ -231,11 +241,12 @@ class ProcurementSettings(BaseModel):
     def _check(self) -> "ProcurementSettings":
         if self.weight_cost + self.weight_delivery + self.weight_reliability + self.weight_terms <= 0:
             raise ValueError("at least one weight must be above zero")
-        try:
-            self.vendor_note_template.format_map({k: "x" for k in VENDOR_NOTE_FIELDS})
-        except (KeyError, IndexError, ValueError) as exc:
-            raise ValueError(f"vendor_note_template can only use {', '.join('{' + k + '}' for k in VENDOR_NOTE_FIELDS)} ({exc!r} is not allowed)") from exc
         return self
+
+    @field_validator("vendor_note_template")
+    @classmethod
+    def _note_template(cls, value: str) -> str:
+        return _checked("vendor_note_template", value, VENDOR_NOTE_FIELDS)
 
 
 class CalendarEvent(BaseModel):
@@ -346,13 +357,18 @@ class FollowUpSettings(BaseModel):
     daily_cron: str = Field("30 7 * * *", description="When late deliveries, goods receipts and new stock counts are checked (cron, your time zone).")
     weekly_cron: str = Field("0 8 * * 1", description="When the slow-stock list and the week's count list are sent (cron, your time zone).")
 
+    @field_validator("chase_message")
+    @classmethod
+    def _chase_template(cls, value: str) -> str:
+        return _checked("chase_message", value, CHASE_FIELDS)
+
+    @field_validator("quote_message")
+    @classmethod
+    def _quote_template(cls, value: str) -> str:
+        return _checked("quote_message", value, QUOTE_FIELDS)
+
     @model_validator(mode="after")
     def _check(self) -> "FollowUpSettings":
-        for name, fields in (("chase_message", CHASE_FIELDS), ("quote_message", QUOTE_FIELDS)):
-            try:
-                getattr(self, name).format_map({k: "x" for k in fields})
-            except (KeyError, IndexError, ValueError) as exc:
-                raise ValueError(f"{name} can only use {', '.join('{' + k + '}' for k in fields)} ({exc!r} is not allowed)") from exc
         for name in ("daily_cron", "weekly_cron"):
             if len(getattr(self, name).split()) != 5:
                 raise ValueError(f"{name} must have 5 fields, e.g. '30 7 * * *'")
