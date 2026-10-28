@@ -58,6 +58,7 @@ class Expect(BaseModel):
     must_not_include: list[str] = Field(default_factory=list)  # none may appear
     prepared: int = 0                           # approval requests the question may create (a person still has to press the button); anything else is a failure
     routed_by_ai: Optional[bool] = None         # the chat asked the model to place the question
+    rejected_because: list[str] = Field(default_factory=list)  # a reply was rejected, and the checks' reasons contain each of these (proves the intended check fired, not another)
     error: Optional[str] = None                 # the application refused the question with a message containing this
 
     @field_validator("outcome")
@@ -116,6 +117,10 @@ class Case(BaseModel):
             keys = [k for k in s if k in STEP_KEYS]
             if len(keys) != 1 or set(s) - set(STEP_KEYS) - {"tokens"}:
                 raise ValueError(f"a model reply is exactly one of {', '.join(STEP_KEYS)} (and may add tokens: [in, out]); got {sorted(s)}")
+            reply = s.get("answer")
+            odd = [k for k in reply if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", str(k))] if isinstance(reply, dict) else []
+            if odd:
+                raise ValueError(f"the reply has a field called {odd[0]!r}: a comma inside a value that is not in quotes splits it in two. Put the text in quotes.")
         return steps
 
     @model_validator(mode="after")

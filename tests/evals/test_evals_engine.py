@@ -208,6 +208,24 @@ def test_every_kind_of_entry_reaches_its_part_of_the_application():
         run_case(missing)
 
 
+def test_a_comma_in_an_unquoted_reply_is_refused_because_it_would_split_the_reply_in_two():
+    with pytest.raises(ValidationError, match="comma inside a value that is not in quotes"):
+        make(reply="bad", llm=[{"answer": {"answerable": True, "answer": "BOLT-M8 has 4", "242 pcs on hand.": None}}])
+
+
+@needs_agents
+def test_a_rejected_reply_must_be_rejected_for_the_reason_the_case_names():
+    bad = [{"tools": [["stock_status", {"item_code": "BOLT-M8"}]]}, {"say": "done"}, {"answer": {"answerable": True, "answer": "BOLT-M8 has 4,242 pcs on hand."}},
+           {"answer": {"answerable": True, "answer": "BOLT-M8 has 300 pcs on hand."}}]
+    right = run_case(agent_case(bad, expect={"outcome": "repaired", "rejected_because": ["numbers that no tool returned"], "must_not_include": ["4,242"]}))
+    assert right.passed, right.failures
+    assert "numbers that no tool returned: 4242" in right.observed.reasons
+    wrong = run_case(agent_case(bad, expect={"outcome": "repaired", "rejected_because": ["guessing words"]}))
+    assert not wrong.passed and "expected a reply to be rejected because of 'guessing words'" in wrong.failures[0]
+    nothing = run_case(agent_case(GOOD, expect={"rejected_because": ["numbers that no tool returned"]}))
+    assert not nothing.passed and "no reply was rejected" in nothing.failures[0]
+
+
 # ------------------------------------------------------------------ adding the results up
 _ids = itertools.count(1)
 

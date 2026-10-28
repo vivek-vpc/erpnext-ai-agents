@@ -1,0 +1,220 @@
+# Golden cases: the model gets it wrong. Whatever it says, the person reads only what passed the checks: figures and codes must be in a tool's result, no guessing words, no sums
+# of its own, the right JSON shape. A rejected reply gets ONE chance to be fixed ("repaired"); a second bad one means the person is told there is not enough information.
+# Every case asks the same question, "How much BOLT-M8 do we have?", of the scripted model; BOLT-M8 has 300 pcs on hand.
+cases:
+  - id: bad-invented-number-twice
+    group: agent_bad
+    note: A made-up figure, repeated after being told it was wrong, never reaches the person.
+    entry: agent
+    as: viewer
+    question: How much BOLT-M8 do we have?
+    reply: bad
+    llm:
+      - tools: [[stock_status, {item_code: BOLT-M8}]]
+      - say: I have what I need.
+      - answer: {answerable: true, answer: "BOLT-M8 has 4,242 pcs on hand."}
+      - answer: {answerable: true, answer: "BOLT-M8 has 4,242 pcs on hand."}
+    expect:
+      rejected_because: ["numbers that no tool returned"]
+      status: not_enough_information
+      source: rules
+      outcome: fallback
+      must_include: ["I do not have enough information"]
+      must_not_include: ["4,242"]
+
+  - id: bad-invented-number-then-repaired
+    group: agent_bad
+    note: Told exactly what was wrong, the model fixes it, and only the fixed answer is shown.
+    entry: agent
+    as: viewer
+    question: How much BOLT-M8 do we have?
+    reply: bad
+    llm:
+      - tools: [[stock_status, {item_code: BOLT-M8}]]
+      - say: I have what I need.
+      - answer: {answerable: true, answer: "BOLT-M8 has 4,242 pcs on hand."}
+      - answer: {answerable: true, answer: "BOLT-M8 has 300 pcs on hand."}
+    expect:
+      rejected_because: ["numbers that no tool returned"]
+      status: answered
+      outcome: repaired
+      must_include: ["300 pcs"]
+      must_not_include: ["4,242"]
+
+  - id: bad-hedging-is-repaired
+    group: agent_bad
+    note: '"Probably" is a guess; only recorded facts are stated.'
+    entry: agent
+    as: viewer
+    question: How much BOLT-M8 do we have?
+    reply: bad
+    llm:
+      - tools: [[stock_status, {item_code: BOLT-M8}]]
+      - say: I have what I need.
+      - answer: {answerable: true, answer: "BOLT-M8 probably has about 300 pcs on hand."}
+      - answer: {answerable: true, answer: "BOLT-M8 has 300 pcs on hand."}
+    expect:
+      rejected_because: ["guessing words (probably)"]
+      status: answered
+      outcome: repaired
+      must_not_include: ["probably"]
+
+  - id: bad-malformed-json-is-repaired
+    group: agent_bad
+    note: A reply that is not the requested JSON is rejected, then fixed.
+    entry: agent
+    as: viewer
+    question: How much BOLT-M8 do we have?
+    reply: bad
+    llm:
+      - tools: [[stock_status, {item_code: BOLT-M8}]]
+      - say: I have what I need.
+      - raw: "Sure! Here is the answer: BOLT-M8 has 300 pcs on hand."
+      - answer: {answerable: true, answer: "BOLT-M8 has 300 pcs on hand."}
+    expect:
+      rejected_because: ["not valid JSON"]
+      status: answered
+      outcome: repaired
+      must_not_include: ["Sure!"]
+
+  - id: bad-missing-field-is-repaired
+    group: agent_bad
+    note: JSON without the field that says whether the question is answerable does not fit the format.
+    entry: agent
+    as: viewer
+    question: How much BOLT-M8 do we have?
+    reply: bad
+    llm:
+      - tools: [[stock_status, {item_code: BOLT-M8}]]
+      - say: I have what I need.
+      - answer: {answer: BOLT-M8 has 300 pcs on hand.}
+      - answer: {answerable: true, answer: "BOLT-M8 has 300 pcs on hand."}
+    expect:
+      rejected_because: ["answerable"]
+      status: answered
+      outcome: repaired
+
+  - id: bad-code-no-tool-returned
+    group: agent_bad
+    note: An item code that no tool returned is made up, whatever number goes with it.
+    entry: agent
+    as: viewer
+    question: How much BOLT-M8 do we have?
+    reply: bad
+    llm:
+      - tools: [[stock_status, {item_code: BOLT-M8}]]
+      - say: I have what I need.
+      - answer: {answerable: true, answer: "ELE-0025 has 300 pcs on hand."}
+      - answer: {answerable: true, answer: "ELE-0025 has 300 pcs on hand."}
+    expect:
+      rejected_because: ["codes that no tool returned"]
+      status: not_enough_information
+      outcome: fallback
+      must_not_include: ["ELE-0025"]
+
+  - id: bad-calculation-of-its-own
+    group: agent_bad
+    note: A comparison or sum is the program's job; a small model gets it wrong with real numbers in the sentence.
+    entry: agent
+    as: viewer
+    question: How much BOLT-M8 do we have?
+    reply: bad
+    llm:
+      - tools: [[stock_status, {item_code: BOLT-M8}]]
+      - say: I have what I need.
+      - answer: {answerable: true, answer: "BOLT-M8 has 300 pcs on hand, which is double a week of use."}
+      - answer: {answerable: true, answer: "BOLT-M8 has 300 pcs on hand, which is double a week of use."}
+    expect:
+      rejected_because: ["calculation or comparison of your own"]
+      status: not_enough_information
+      outcome: fallback
+      must_not_include: ["double"]
+
+  - id: bad-empty-answer-is-repaired
+    group: agent_bad
+    note: Saying "answerable" and then nothing is not an answer.
+    entry: agent
+    as: viewer
+    question: How much BOLT-M8 do we have?
+    reply: bad
+    llm:
+      - tools: [[stock_status, {item_code: BOLT-M8}]]
+      - say: I have what I need.
+      - answer: {answerable: true, answer: ""}
+      - answer: {answerable: true, answer: "BOLT-M8 has 300 pcs on hand."}
+    expect:
+      rejected_because: ["not an answer"]
+      status: answered
+      outcome: repaired
+
+  - id: bad-prose-instead-of-json-twice
+    group: agent_bad
+    note: A model that keeps chatting instead of answering in the format ends with the plain "not enough information".
+    entry: agent
+    as: viewer
+    question: How much BOLT-M8 do we have?
+    reply: bad
+    llm:
+      - tools: [[stock_status, {item_code: BOLT-M8}]]
+      - say: I have what I need.
+      - raw: Let me think about that for a moment.
+      - raw: I would be happy to help with that.
+    expect:
+      rejected_because: ["not valid JSON"]
+      status: not_enough_information
+      outcome: fallback
+      must_not_include: ["happy to help"]
+
+  - id: bad-model-unreachable
+    group: agent_bad
+    note: With the model down the person is told it is not available; nothing is made up.
+    entry: agent
+    as: viewer
+    question: How much BOLT-M8 do we have?
+    reply: bad
+    llm:
+      - error: could not reach the model at http://127.0.0.1:11434
+    expect:
+      status: unavailable
+      source: rules
+      outcome: unavailable
+      must_include: ["not available"]
+
+  - id: bad-tool-the-agent-may-not-use
+    group: agent_bad
+    note: A tool that is not on the agent's list is refused, and the model carries on with the ones it may use.
+    entry: agent
+    as: viewer
+    question: How much BOLT-M8 do we have?
+    reply: bad
+    llm:
+      - tools: [[delete_everything, {}]]
+      - tools: [[stock_status, {item_code: BOLT-M8}]]
+      - say: I have what I need.
+      - answer: {answerable: true, answer: "BOLT-M8 has 300 pcs on hand."}
+    expect:
+      status: answered
+      outcome: accepted
+      tools: [stock_status]
+      no_tools: [delete_everything]
+      must_include: ["300 pcs"]
+
+  - id: bad-more-tool-calls-than-allowed
+    group: agent_bad
+    note: The number of tool calls in one task is capped; the extra ones are refused and the model answers with what it has.
+    entry: agent
+    as: viewer
+    setup:
+      - setting: {section: agents, set: {max_tool_calls: 2}}
+    question: How much BOLT-M8 do we have?
+    reply: bad
+    llm:
+      - tools: [[stock_status, {item_code: BOLT-M8}], [stock_status, {item_code: OIL-5L}], [stock_status, {item_code: RELAY-12V}]]
+      - answer: {answerable: true, answer: "BOLT-M8 has 300 pcs on hand."}
+    expect:
+      status: answered
+      outcome: accepted
+      tools:
+        - stock_status: {item_code: BOLT-M8}
+        - stock_status: {item_code: OIL-5L}
+      no_tools: [vendor_options]

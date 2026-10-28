@@ -45,6 +45,7 @@ class Observed:
     error: str = ""
     model_calls: int = 0
     note: str = ""                                   # the problems the checks found in a rejected reply, as the task record keeps them
+    reasons: str = ""                                # every reason the checks gave for rejecting a reply: what the model was told in a repair, the final note, the check of a restatement
 
 
 @dataclass
@@ -145,6 +146,8 @@ def _observe(obs: Observed, case: Case, app: Any, result: dict[str, Any], script
         _from_task(obs, task)
     elif obs.model_calls or (script is None and case.ai_sections):
         _from_single_shot(obs, case, result, script)
+    told = [str(c["shown"][-1].get("content", "")) for c in (script.calls if script else []) if c["kind"] == "repair" and isinstance(c["shown"], list) and c["shown"]]
+    obs.reasons = " | ".join([*told, obs.note if obs.outcome == "fallback" else "", str(result.get("check") or "") if obs.status == "rejected" else ""]).strip(" |")
 
 
 def _from_task(obs: Observed, task: dict[str, Any]) -> None:
@@ -218,6 +221,9 @@ def check(case: Case, exp: Expect, obs: Observed, script: Optional[Script], live
     for banned in exp.must_not_include:
         if _found(banned, obs.text, low):
             bad.append(f"must not include {banned!r}, but the person read it in: {obs.answer[:160]!r}")
+    for why in exp.rejected_because:
+        if why.lower() not in obs.reasons.lower():
+            bad.append(f"expected a reply to be rejected because of {why!r}; the checks said: {obs.reasons[:200] or 'nothing (no reply was rejected)'}")
     if obs.prepared != exp.prepared:
         bad.append(f"approval requests created: expected {exp.prepared}, got {obs.prepared}")
     if obs.erp_writes:

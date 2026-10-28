@@ -1,0 +1,16 @@
+{
+  "_comment": "The limits the deterministic AI evaluation must meet (python -m tools.evals --check; the same gate runs inside pytest). The suite is deterministic, so the pass rate is 100%: a case that fails is a defect or a case that needs a decision. Limits are reviewed like code. They may be tightened freely; loosening one needs a reason in the pull request. See docs/EVALUATION.md.",
+  "min_cases": 60,
+  "max_cases": 100,
+  "skipped_max": 0,
+  "pass_rate": {"overall": 1.0, "per_group": {}},
+  "min_cases_per_group": {
+    "item_stock": 6, "stock_overview": 5, "vendor_compare": 5, "document_status": 7, "pending_approvals": 4, "ambiguous": 4, "follow_up": 3, "followup_tools": 5,
+    "decision_history": 5, "permissions": 7, "out_of_scope": 5, "router": 3, "agent_good": 3, "agent_bad": 9, "explain": 3
+  },
+  "bad_replies_caught": 1.0,
+  "good_replies_wrongly_rejected_max": 0,
+  "known_gaps_max": 2,
+  "fallback_rate_max": 0.35,
+  "repairs_min": 8
+}

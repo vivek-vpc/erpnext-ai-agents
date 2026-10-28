@@ -1,0 +1,93 @@
+# Golden cases: "why did you suggest this?" and "what did we decide?". The decision history answers from the record (and names nobody). The `why` cases put the question to the
+# checked "Ask why" assistant about one waiting request, with a scripted model.
+cases:
+  - id: history-a-suggestion-still-waiting
+    group: decision_history
+    note: A suggestion nobody has answered says so, and gives the reasons it was made.
+    question: Why did you suggest reordering BOLT-M8?
+    expect:
+      intent: decision_history
+      source: data
+      tools:
+        - decision_history: {item_code: BOLT-M8}
+      must_include: ["Reorder suggested: Bolt M8 x 40 (BOLT-M8)", "Waiting for an answer", "7.3 days"]
+
+  - id: history-a-suggestion-that-was-dismissed
+    group: decision_history
+    note: What a person answered is part of the history.
+    setup:
+      - decide: {kind: inventory.reorder, item: BOLT-M8, action: dismiss}
+    question: Why did you suggest reordering BOLT-M8?
+    expect:
+      intent: decision_history
+      must_include: ["Ignore by a person via app"]
+
+  - id: history-a-whole-reorder
+    group: decision_history
+    note: Suggestion, purchase request and draft order are three decisions on one item, newest first.
+    setup:
+      - decide: {kind: inventory.reorder, item: BOLT-M8, action: approve}
+      - run: procurement
+      - decide: {kind: procurement.po, item: BOLT-M8, action: approve}
+    question: What did we decide about BOLT-M8?
+    expect:
+      intent: decision_history
+      must_include: ["The last 3 decisions on that (of 3)", "Create order by a person via app", "PO-MOCK-0001"]
+
+  - id: history-names-nobody
+    group: decision_history
+    note: The chat shows that a person decided, not who; names stay out of what the AI path can read.
+    setup:
+      - decide: {kind: inventory.reorder, item: BOLT-M8, action: dismiss}
+    question: Why did you suggest reordering BOLT-M8?
+    expect:
+      intent: decision_history
+      must_include: ["by a person"]
+      must_not_include: ["eval-priya", "priya"]
+
+  - id: history-nothing-was-decided
+    group: decision_history
+    note: A healthy item has no decision; the answer says that and invents none.
+    question: Why did you order STEEL-2MM?
+    expect:
+      intent: decision_history
+      must_include: ["I found no decision on that"]
+      must_not_include: ["Reorder suggested"]
+
+  - id: history-why-this-alert-the-model-cites-facts
+    group: decision_history
+    note: '"Ask why" on a waiting reorder: the model restates facts it cites by number, and every number is in those facts.'
+    entry: why
+    as: viewer
+    approval: {kind: inventory.reorder, item: BOLT-M8}
+    question: Why am I seeing this alert?
+    reply: good
+    llm:
+      - answer:
+          answerable: true
+          answer: Bolt M8 x 40 has 300 pcs on hand, which lasts about 7.3 days. That is within the supplier lead time of 5 days plus 3 safety days, so it is time to order.
+          facts_used: [F2, F9]
+    expect:
+      status: answered
+      outcome: accepted
+      must_include: ["300 pcs on hand", "7.3 days", "time to order"]
+
+  - id: history-why-the-model-invents-a-number
+    group: decision_history
+    note: A reply with a figure that is not in the recorded facts never reaches the person.
+    entry: why
+    as: viewer
+    approval: {kind: inventory.reorder, item: BOLT-M8}
+    question: Why am I seeing this alert?
+    reply: bad
+    llm:
+      - answer:
+          answerable: true
+          answer: Bolt M8 x 40 will run out in 3 days, so order 2000 now.
+          facts_used: [F2]
+    expect:
+      rejected_because: ["numbers that are not in the recorded data"]
+      status: rejected
+      outcome: fallback
+      must_include: ["I do not have enough information"]
+      must_not_include: ["2000", "3 days"]

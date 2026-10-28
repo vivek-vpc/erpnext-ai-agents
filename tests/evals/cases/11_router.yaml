@@ -1,0 +1,60 @@
+# Golden cases: a question the plain rules cannot place goes to the model, which may only pick one question type from a fixed list (never an action, never free text).
+# The stand-in model's reply is scripted. `ai: [assistant]` switches the router on and the agents off, so these cases test the router alone.
+cases:
+  - id: router-places-a-vague-question
+    group: router
+    note: The rules do not know "reliable" but the model maps it to the vendor scorecard, which answers from data.
+    ai: [assistant]
+    question: Is Prime Supplies reliable?
+    reply: good
+    llm:
+      - answer: {intent: vendor_scorecard}
+    expect:
+      routed_by_ai: true
+      intent: vendor_scorecard
+      source: data
+      outcome: accepted
+      tools: [vendor_scorecard]
+      only_tools: true
+
+  - id: router-cannot-invent-a-question-type
+    group: router
+    note: A type that is not on the list is ignored and the person gets the help text.
+    ai: [assistant]
+    question: Where do we stand on supplies?
+    reply: bad
+    llm:
+      - answer: {intent: delete_everything}
+    expect:
+      routed_by_ai: false
+      intent: help
+      outcome: fallback
+      must_include: ["I can answer questions about your stock"]
+
+  - id: router-cannot-reach-an-action
+    group: router
+    note: Preparing an order is an action, not a question type, so the model cannot route to it even if it tries.
+    ai: [assistant]
+    world: quiet
+    question: Where do we stand on supplies?
+    reply: bad
+    llm:
+      - answer: {intent: order_request}
+    expect:
+      routed_by_ai: false
+      intent: help
+      outcome: fallback
+      prepared: 0
+
+  - id: router-model-unreachable
+    group: router
+    note: With the model down the rules' help text is shown, not an error.
+    ai: [assistant]
+    question: Where do we stand on supplies?
+    reply: bad
+    llm:
+      - error: could not reach the model at http://127.0.0.1:11434
+    expect:
+      routed_by_ai: false
+      intent: help
+      outcome: unavailable
