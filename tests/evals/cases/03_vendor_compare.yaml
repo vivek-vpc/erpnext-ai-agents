@@ -1,0 +1,62 @@
+# Golden cases: comparing vendors for one item. The program's own vendor scoring decides; no model is involved.
+cases:
+  - id: vendors-for-an-item
+    group: vendor_compare
+    note: Quantity left out, so the suggested reorder quantity is used and said.
+    question: Compare vendors for BOLT-M8
+    expect:
+      intent: vendor_compare
+      source: data
+      must_include: ["For 1,256 pcs of Bolt M8 x 40", "the best vendor is Prime Supplies", "Swift Industrial was not chosen", "Budget Traders was not chosen"]
+
+  - id: vendors-with-a-quantity
+    group: vendor_compare
+    note: The person's quantity is used, and the total follows from it.
+    question: compare vendors for BOLT-M8 for 500
+    expect:
+      intent: vendor_compare
+      must_include: ["For 500 pcs", "18,435.00 in total", "Prime Supplies"]
+      must_not_include: ["1,256"]
+
+  - id: vendors-asked-as-who-should-we-buy-from
+    group: vendor_compare
+    note: A buyer's wording, no keyword like "compare".
+    question: Who should we buy RELAY-12V from?
+    expect:
+      intent: vendor_compare
+      must_include: ["Relay 12V", "the best vendor is Prime Supplies"]
+
+  - id: vendors-landed-cost-question
+    group: vendor_compare
+    note: A question about landed cost gets the comparison and the plain warning about what it does not include.
+    question: why is the landed cost of BOLT-M8 so high
+    expect:
+      intent: vendor_compare
+      must_include: ["Duties and taxes are not in this comparison"]
+
+  - id: vendors-need-an-item
+    group: vendor_compare
+    note: "No item named and none in the conversation: ask, do not guess."
+    question: compare vendors
+    expect:
+      intent: vendor_compare
+      status: clarify
+      must_include: ["Which item do you mean?"]
+      must_not_include: ["the best vendor is"]
+
+  - id: vendors-by-full-item-name
+    group: vendor_compare
+    note: The item named in words.
+    question: compare suppliers for Hydraulic Oil 5L
+    expect:
+      intent: vendor_compare
+      must_include: ["105 cans of Hydraulic Oil 5L", "Prime Supplies"]
+
+  - id: vendors-best-vendor-for-an-item
+    group: vendor_compare
+    note: Naming an item makes "which vendor is best for X" a price-and-delivery comparison for X.
+    known_gap: "The word 'best' next to 'vendor' sends the question to the vendor scorecard, which ranks all vendors on delivery history ('not enough goods receipts') and ignores the item (found by this suite, 28 Oct 2026)."
+    question: which vendor is best for GASKET-X
+    expect:
+      intent: vendor_compare
+      must_include: ["Gasket Type X", "Prime Supplies"]

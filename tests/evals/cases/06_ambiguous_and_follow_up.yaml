@@ -1,0 +1,92 @@
+# Golden cases: an item the wording only partly identifies (ask which, never guess), and a follow-up that keeps talking about the item from before.
+cases:
+  - id: ambiguous-two-hex-bolts
+    group: ambiguous
+    note: Two items fit equally well, so the person is asked which one.
+    setup:
+      - item: {code: FAS-0003, name: Hex Bolt SS304 M10x50, group: Fasteners, per_day: 4, on_hand: 200}
+      - item: {code: FAS-0004, name: Hex Bolt SS304 M12x70, group: Fasteners, per_day: 2, on_hand: 90}
+    question: How much hex bolt do we have?
+    expect:
+      status: clarify
+      must_include: ["Did you mean one of these?", "FAS-0003", "FAS-0004"]
+      must_not_include: ["you have 200", "you have 90"]
+
+  - id: ambiguous-the-full-name-settles-it
+    group: ambiguous
+    note: The same two items, but the question gives one name in full.
+    setup:
+      - item: {code: FAS-0003, name: Hex Bolt SS304 M10x50, group: Fasteners, per_day: 4, on_hand: 200}
+      - item: {code: FAS-0004, name: Hex Bolt SS304 M12x70, group: Fasteners, per_day: 2, on_hand: 90}
+    question: How much hex bolt ss304 m12x70 do we have?
+    expect:
+      intent: item_stock
+      must_include: ["Hex Bolt SS304 M12x70 (FAS-0004)", "90 pcs"]
+      must_not_include: ["FAS-0003"]
+
+  - id: ambiguous-order-request-asks-which-item
+    group: ambiguous
+    note: An unclear item never becomes an order request.
+    world: quiet
+    question: Create a purchase order for hex bolt
+    expect:
+      status: clarify
+      must_include: ["Did you mean one of these?"]
+      prepared: 0
+
+  - id: ambiguous-a-near-name-is-confirmed
+    group: ambiguous
+    note: A name that is only close to one item is confirmed with the person, not assumed.
+    question: which vendor is cheapest for oil 5l
+    expect:
+      status: clarify
+      must_include: ["Did you mean one of these?", "Hydraulic Oil 5L (OIL-5L)"]
+      must_not_include: ["the best vendor is"]
+
+  - id: ambiguous-two-items-in-an-order-request
+    group: ambiguous
+    note: An order request is for one item at a time.
+    world: quiet
+    question: Create a purchase order for BOLT-M8 and OIL-5L
+    expect:
+      status: clarify
+      must_include: ["one item at a time"]
+      prepared: 0
+
+  - id: follow-up-and-the-vendors
+    group: follow_up
+    note: '"And the vendors?" after an answer about OIL-5L is about OIL-5L.'
+    context: {items: [OIL-5L]}
+    question: And the vendors?
+    expect:
+      intent: vendor_compare
+      must_include: ["(Still talking about the same item.)", "Hydraulic Oil 5L", "Prime Supplies"]
+
+  - id: follow-up-how-long-will-it-last
+    group: follow_up
+    note: '"It" and "that" point back to the item from before.'
+    context: {items: [OIL-5L]}
+    question: how long will it last?
+    expect:
+      intent: item_stock
+      must_include: ["(Still talking about the same item.)", "6.3 days"]
+
+  - id: follow-up-a-new-item-wins
+    group: follow_up
+    note: When the question names an item, the one from before is forgotten.
+    context: {items: [OIL-5L]}
+    question: and RELAY-12V?
+    expect:
+      intent: item_stock
+      must_include: ["Relay 12V (RELAY-12V)"]
+      must_not_include: ["Hydraulic Oil", "Still talking about the same item"]
+
+  - id: follow-up-a-stale-item-is-ignored
+    group: follow_up
+    note: A remembered item that no longer exists is not used.
+    context: {items: [NOPE-1]}
+    question: and the vendors?
+    expect:
+      intent: vendor_compare
+      status: clarify
+      must_include: ["Which item do you mean?"]
