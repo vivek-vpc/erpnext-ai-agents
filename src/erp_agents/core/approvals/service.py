@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any, Callable, Optional
 
+from .. import obs
 from ..common import Actor, Clock, iso, parse_dt, short_id, utcnow
 from ..policy import SystemSettings
 from ..storage import Database, dumps, loads
@@ -121,7 +122,7 @@ class ApprovalService:
                       ok: bool, external_id: Optional[str], error: Optional[str]) -> None:
         self.db.execute(
             "INSERT INTO deliveries(approval_id, recipient_id, channel, address, status, external_id, error, sent_at) VALUES (?,?,?,?,?,?,?,?)",
-            (approval_id, recipient_id, channel, address, "sent" if ok else "failed", external_id, error, iso(self.clock())),
+            (approval_id, recipient_id, channel, address, "sent" if ok else "failed", external_id, obs.scrub(error) if error else error, iso(self.clock())),      # a network error can quote a token or a number
         )
 
     def retry_failed_deliveries(self) -> int:
@@ -140,7 +141,7 @@ class ApprovalService:
             attempts = d["attempts"] + 1
             status = "sent" if res.ok else ("given_up" if attempts >= MAX_DELIVERY_ATTEMPTS else "failed")
             self.db.execute("UPDATE deliveries SET status=?, external_id=?, error=?, attempts=?, sent_at=? WHERE id=?",
-                            (status, res.external_id, res.error, attempts, iso(self.clock()), d["id"]))
+                            (status, res.external_id, obs.scrub(res.error) if res.error else res.error, attempts, iso(self.clock()), d["id"]))
             fixed += int(res.ok)
         return fixed
 

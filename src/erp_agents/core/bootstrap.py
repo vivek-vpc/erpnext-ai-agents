@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
+from . import obs
 from .audit import AuditChain
 from .history import DecisionHistory
 from .agents.service import AgentService
@@ -62,6 +63,7 @@ class App:
     reschedule_scopes: tuple[str, ...] = ()        # settings sections whose change reschedules the packs' jobs (besides system and agents)
     audit: Optional[Any] = None                     # the seal over the decision history (audit.py)
     history: Optional[Any] = None                   # "Why did you do that?": every past decision with its reasoning (history.py)
+    observability: Optional[Any] = None             # the `observability:` section (obs.py ObsSettings): log format, metrics, tracing
 
     def __getattr__(self, name: str) -> Any:
         # reached only when the application itself has no such attribute: a service a pack provided
@@ -101,6 +103,11 @@ def build_app(
     problem = demo_key_problem(cfg)             # before anything is created or opened
     if problem:
         raise StartupRefused(problem)
+    try:
+        observability = obs.settings_from(cfg)
+    except ValueError as exc:
+        raise StartupRefused(str(exc)) from None
+    obs.register_secrets_from_config(cfg)       # so that no log line, in any format, can carry a key, a token or a phone number that this configuration holds
 
     path = db_path or cfg["database"]["path"]
     if path != ":memory:":
@@ -147,7 +154,7 @@ def build_app(
     sessions = SessionStore(login, ttl_seconds=float(auth_cfg.get("session_hours", 12)) * 3600,
                             recheck_seconds=float(auth_cfg.get("recheck_minutes", 15)) * 60) if login else None
     app = App(cfg, db, settings, erp, channels, router, approvals, workorders, tokens, clock, packs,
-              login=login, sessions=sessions, throttle=LoginThrottle() if login else None)
+              login=login, sessions=sessions, throttle=LoginThrottle() if login else None, observability=observability)
     app.agent_log = AgentLog(db, clock)
     app.toolkit = Toolkit(app, log_call=app.agent_log.log_tool)
     app.toolkit.is_enabled = packs.is_enabled      # a pack that is switched off answers nothing, at once

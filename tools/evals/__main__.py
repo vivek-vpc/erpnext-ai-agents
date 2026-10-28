@@ -38,6 +38,15 @@ def show(result: Result) -> None:
 
 
 def main(argv: Optional[list[str]] = None) -> int:
+    previous = logging.root.manager.disable
+    logging.disable(logging.WARNING - 1)                  # the application logs a line at start-up for every world; only warnings and errors matter here ...
+    try:
+        return _main(argv)
+    finally:
+        logging.disable(previous)                         # ... and the rest of the process (a test session) gets its logging back
+
+
+def _main(argv: Optional[list[str]] = None) -> int:
     p = argparse.ArgumentParser(prog="python -m tools.evals", description=__doc__.split("\n\n")[0])
     p.add_argument("--check", action="store_true", help="exit 1 when a threshold in tests/evals/thresholds.json is missed (what CI runs)")
     p.add_argument("--case", action="append", default=[], help="run only this case id (repeatable)")
@@ -47,7 +56,6 @@ def main(argv: Optional[list[str]] = None) -> int:
     p.add_argument("--markdown", metavar="FILE", help="append the report to this file (CI passes $GITHUB_STEP_SUMMARY)")
     p.add_argument("--json", metavar="FILE", help="write the summary as JSON")
     args = p.parse_args(argv)
-    logging.disable(logging.WARNING - 1)                  # the application logs a line at start-up for every world; only warnings and errors matter here
 
     try:
         cases = load_cases()

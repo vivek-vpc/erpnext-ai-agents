@@ -147,7 +147,15 @@ def run_model(cases: list[Case], spec: ModelSpec, keys: dict[str, str], allow_re
 def golden(args: Any) -> int:
     """`python -m tools.e2e.agents_eval --suite golden ...`: returns the exit code."""
     import logging
-    logging.disable(logging.WARNING - 1)
+    previous = logging.root.manager.disable
+    logging.disable(logging.WARNING - 1)                  # a line at start-up for every world is noise here; the process gets its logging back afterwards
+    try:
+        return _golden(args)
+    finally:
+        logging.disable(previous)
+
+
+def _golden(args: Any) -> int:
     cases = live_cases(load_cases(), args.group, args.case)
     if not cases:
         print("no case matches: only cases a real model can answer are run (python -m tools.evals --list shows them all)")

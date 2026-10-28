@@ -11,6 +11,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Optional
 
+from . import obs
 from .approvals.channels.telegram import TelegramChannel
 from .approvals.render import render_plain
 from .bootstrap import App, StartupRefused, build_app
@@ -377,6 +378,9 @@ def cmd_serve(args) -> int:
 
 def _serve(args, create_app, uvicorn, asynccontextmanager, AgentScheduler) -> int:
     app = _app(args)
+    fmt = obs.log_format_from(args.log_format, app.observability.log_format)         # the flag and the environment win over the settings file
+    if fmt != obs.log_format_from(args.log_format):
+        obs.configure_logging(logging.DEBUG if args.verbose_log else logging.INFO, fmt)
     scheduler = AgentScheduler(app)
 
     @asynccontextmanager
@@ -398,7 +402,8 @@ def _serve(args, create_app, uvicorn, asynccontextmanager, AgentScheduler) -> in
         print(warning)
     if host not in ("127.0.0.1", "::1", "localhost"):
         print(f"WARNING: listening on {host}, not only on this machine. Anybody who can reach that address can reach the sign-in page.")
-    uvicorn.run(api, host=host, port=args.port or int(srv.get("port", 8100)), log_level="info", server_header=False)
+    # in the JSON format uvicorn's own lines (start-up, access) go through our handler too, so every line is one JSON object; in the text format it keeps its usual look
+    uvicorn.run(api, host=host, port=args.port or int(srv.get("port", 8100)), log_level="info", server_header=False, **({"log_config": None} if fmt == "json" else {}))
     return 0
 
 
@@ -408,6 +413,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="erp-agents", description="Agentic inventory monitoring for small-business ERP")
     p.add_argument("--config", default=None, help="path to settings.yaml (default: $ERP_AGENTS_CONFIG or config/settings.yaml)")
     p.add_argument("-v", "--verbose-log", action="store_true", help="debug logging")
+    p.add_argument("--log-format", choices=["text", "json"], default=None,
+                   help="how log lines are written: text (the default) or json, one object per line (also: $ERP_AGENTS_LOG_FORMAT, or observability.log_format in the settings file)")
     sub = p.add_subparsers(dest="command", required=True)
 
     s = sub.add_parser("init", help="write a starter config/settings.yaml")
@@ -513,7 +520,14 @@ def main(argv: Optional[list[str]] = None) -> int:
         except Exception:  # noqa: BLE001  # not a real text stream (e.g. under test capture): nothing to reconfigure  # nosec B110
             pass
     args = parse_cli(build_parser(), argv)
-    logging.basicConfig(level=logging.DEBUG if args.verbose_log else logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    level = logging.DEBUG if args.verbose_log else logging.INFO
+    try:
+        fmt = obs.log_format_from(args.log_format)
+    except ValueError as exc:
+        print(f"erp-agents: {exc}", file=sys.stderr)
+        return 2
+    if args.log_format or os.environ.get(obs.LOG_FORMAT_ENV) or not logging.getLogger().handlers:        # as basicConfig did: leave a logging set-up that is already there alone
+        obs.configure_logging(level, fmt)
     try:
         return args.fn(args)
     except StartupRefused as exc:                # a configuration it will not start with: say why, in words, without a traceback

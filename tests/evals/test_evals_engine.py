@@ -293,6 +293,15 @@ def test_the_command_line_lists_shows_and_refuses_a_partial_check(monkeypatch, c
     assert cli.main(["--group", "ambiguous"]) == 2
 
 
+def test_the_command_line_gives_logging_back_when_it_is_done(monkeypatch):
+    """It silences the application's start-up lines while it runs; it used to leave them silenced for the rest of the process (a whole test session)."""
+    import logging
+    monkeypatch.setattr(cli, "load_cases", lambda: [make(expect={"intent": "item_stock"})])
+    before = logging.root.manager.disable
+    assert cli.main(["--list"]) == 0 and cli.main(["--case", "case-one"]) == 0
+    assert logging.root.manager.disable == before
+
+
 def test_a_broken_case_file_is_reported_in_words_not_a_traceback(monkeypatch, capsys):
     def broken():
         raise ValueError("x.yaml: not valid YAML")
