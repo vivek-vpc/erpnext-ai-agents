@@ -7,6 +7,8 @@ from typing import Any, Optional, Protocol
 
 import requests
 
+from .. import obs
+
 SEED = 42
 
 
@@ -25,7 +27,7 @@ class OllamaClient:
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.timeout = timeout
-        self.session = session or requests.Session()
+        self.session = session or obs.observe_session(requests.Session(), "llm")
 
     def chat(self, system: str, user: str, schema: dict[str, Any]) -> str:
         body = {

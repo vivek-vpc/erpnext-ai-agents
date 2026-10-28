@@ -14,9 +14,10 @@ The Stock Assistant has always worked from rules: the same data gives the same a
             │  MCP (in-process)                                         │
             ▼                                                           ▼
    ┌───────────────────────  MCP server (core/mcp_server.py)  ───────────────────────┐
-   │   7 tools (the stock pack, tools.py): look up stock, usage, vendors, orders, requests;│
-   │   one tool prepares an order REQUEST for a person to answer                │
-   └──────────────────────────────────┬─────────────────────────────────────────┘
+   │  the stock pack's tools (tools.py): look up stock, usage, vendors, orders,      │
+   │  late deliveries, receipts, forecasts; some prepare a REQUEST for a person to   │
+   │  answer (an order, a price request, a stock transfer); no tool writes to ERPNext│
+   └──────────────────────────────────┬──────────────────────────────────────────────┘
                                       ▼
         stock analysis · vendor ranking · approvals · ERPNext (the existing code, unchanged)
 ```
@@ -32,7 +33,7 @@ The Stock Assistant has always worked from rules: the same data gives the same a
 
 ## The tools
 
-All of them are defined in the stock pack ([`src/erp_agents/packs/stock_procurement/tools.py`](../src/erp_agents/packs/stock_procurement/tools.py), declared in its [`manifest.yaml`](../src/erp_agents/packs/stock_procurement/manifest.yaml)) and registered with the core's tool registry ([`core/toolkit.py`](../src/erp_agents/core/toolkit.py)), which checks the caller's role on every call. They are plain Python with no web, HTTP or SQL imports, so they move into a Frappe app unchanged. The MCP server publishes exactly these, with the same names, descriptions and argument descriptions.
+The registry holds <!-- tools:counts -->17 tools: 14 read-only and 3 prepare-only<!-- /tools:counts -->. All of them are defined in the stock pack ([`src/erp_agents/packs/stock_procurement/tools.py`](../src/erp_agents/packs/stock_procurement/tools.py), declared in its [`manifest.yaml`](../src/erp_agents/packs/stock_procurement/manifest.yaml)) and registered with the core's tool registry ([`core/toolkit.py`](../src/erp_agents/core/toolkit.py)), which checks the caller's role on every call. They are plain Python with no web, HTTP or SQL imports, so they move into a Frappe app unchanged. The MCP server publishes exactly these, with the same names, descriptions and argument descriptions.
 
 | Tool | Who may use it | Returns |
 |---|---|---|
@@ -55,6 +56,22 @@ All of them are defined in the stock pack ([`src/erp_agents/packs/stock_procurem
 | `prepare_stock_transfer(item_code, qty, from_warehouse, to_warehouse, reason)` | approvers | Prepares a request to move stock from one warehouse to another, checked against what the source holds. Creates nothing: a person presses Create transfer, which makes a draft Stock Entry |
 
 Every call is checked against the caller's ERPNext-derived level, and logged (who, how, which tool, which arguments, whether it worked) in `tool_calls`. Results are capped at 7,000 characters. Numbers sent as text by a small model (`"500"`, `"1,200"`) are accepted; a wrong value is an error the model can read and correct.
+
+## What is written to ERPNext
+
+No tool writes to ERPNext. The three that prepare a request only put it in front of a person; what a button then creates is below. Everything else the assistant does in ERPNext is reading.
+
+<!-- erp-writes -->
+| Document | What it writes | Through which tool and button |
+|---|---|---|
+| `Purchase Order` | A **draft**, with the approver recorded. Afterwards, only on an order it created itself (found by its reference): change the quantity, delete the draft, or cancel the submitted order | `prepare_order_request`, then **Create order**; later **Change quantity** and **Cancel order** (or the same words typed in a chat) |
+| `Material Request` | A **draft** purchase requisition, for the items and groups you chose to requisition first, or when a person picks "Create a requisition instead" | `prepare_order_request`, then **Create a requisition instead** |
+| `Stock Entry` | A **draft** of type Material Transfer. No stock moves until someone submits it in ERPNext | `prepare_stock_transfer`, then **Create transfer** |
+| `Communication` | An e-mail to a supplier through ERPNext's own outgoing mail (recorded on the document there), only after a person presses Send | The late-delivery reminder and `prepare_quote_request`, then **Send reminder** / **Send requests** |
+| `Custom Field` | Two fields, a reference and the approver's name, on Purchase Order, Material Request and Stock Entry, once | `erp-agents erp-setup`, an administrator's command (not a tool) |
+<!-- /erp-writes -->
+
+Never written: a submitted document of any kind (a person submits in ERPNext), Supplier Quotations, Purchase Receipts, Purchase Invoices, payments, items, suppliers, stock counts or ERPNext settings. The assistant's own settings and records live in its own database. [tests/test_docs_match_code.py](../tests/test_docs_match_code.py) compares this table with the pack manifest and the ERPNext client, so a new kind of write cannot ship without being listed here.
 
 ## The MCP server
 
@@ -166,6 +183,10 @@ Then **Settings > AI agents** > "Let the AI agents help" (or `agents.enabled: tr
 | `POST /api/v1/agents/ask` | look | Start a question (polled) |
 | `GET/POST /api/v1/agents/reviews/{request id}` | approve | The second opinion on an order request |
 | `GET /api/v1/agents/tasks[/{id}]` | look (own questions) · admin (`?trace=true`) | What ran, and what was sent |
+
+## Checked on every change: the AI evaluation
+
+100 golden questions run in CI on every pull request, with no model and no ERPNext: a scripted stand-in plays the model, including bad replies (an invented figure, a guess, malformed JSON), and the suite requires that each is caught, that nothing is written to ERPNext, and that no request is prepared unless the person asked. The limits are in `tests/evals/thresholds.json`. The same questions that a real model can answer can be run on it, and on a second model beside it, with `python -m tools.e2e.agents_eval --suite golden --against ...`. How it works, how to add a question, and what it found: [EVALUATION.md](EVALUATION.md).
 
 ## Measured on the author's laptop (24 Oct 2026)
 

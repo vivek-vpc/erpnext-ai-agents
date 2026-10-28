@@ -45,6 +45,8 @@ FOLLOWUP_INTENTS = ("receipt_mismatches", "late_deliveries", "vendor_scorecard",
 INTENTS = ("item_stock", "stock_overview", "vendor_compare", "document_status", "pending_approvals", *FOLLOWUP_INTENTS)
 DOC_PREFIX = {"PUR-ORD": "Purchase Order", "MAT-MR": "Material Request", "MAT-PRE": "Purchase Receipt"}
 DOC_NAME = re.compile(r"\b([A-Za-z]{2,5}-[A-Za-z]{2,5})-(\d{4})-(\d{3,7})\b")
+ITEM_CODE_LIKE = re.compile(r"\b[A-Za-z]{2,}[A-Za-z0-9]*-[A-Za-z0-9-]*\d[A-Za-z0-9-]*\b")          # NOPE-99, fas-0003: written the way item codes are (letters, a hyphen, a digit); "re-order" is not
+SCORECARD_WORDS = re.compile(r"scorecard|rank\w*|performance|on[- ]time|\brecord\b|rating|price drift")      # a question that is about how vendors perform, not about buying one item
 SYMBOLS = {"INR": "₹", "USD": "$", "EUR": "€", "GBP": "£"}
 
 STOP = set("a an the is are was were of for on in at to from with and or but how what which who when where why do does did can could would should i we you me my our us it its "
@@ -230,7 +232,8 @@ class Plan:
     from_warehouse: Optional[str] = None                      # a stock transfer: the warehouse named as the source, the one named as the destination
     to_warehouse: Optional[str] = None
     warehouse_unclear: bool = False                           # warehouses were named but not which is which, or only one
-    original: str = ""                                        # the question as it was typed (a vendor's name is told by its capital letters)
+    unknown_codes: list[str] = field(default_factory=list)    # something written like an item code that is no item (and no document number): a typo, or an item that does not exist
+    original: str = ""                                      # the question as it was typed (a vendor's name is told by its capital letters)
     text: str = ""                                            # the question, lower case (a follow-up answer reads its wording, e.g. count plan or count differences)
 
 
@@ -303,6 +306,8 @@ def understand(question: str, items: list[ItemInfo], context: Optional[dict[str,
     plan = Plan(text=q, original=question)
     plan.docs = [f"{m.group(1).upper()}-{m.group(2)}-{m.group(3)}" for m in DOC_NAME.finditer(question)]
     plan.items, plan.near = resolve_items(question, items)
+    known = {i.code.lower() for i in items}
+    plan.unknown_codes = [c for c in dict.fromkeys(ITEM_CODE_LIKE.findall(question)) if c.lower() not in known and not DOC_NAME.fullmatch(c)]
     groups = sorted({i.group for i in items if i.group})
     qset = {t for t in toks if t not in STOP}
     for g in groups:
@@ -331,6 +336,8 @@ def understand(question: str, items: list[ItemInfo], context: Optional[dict[str,
 
     plan.manage = wants_manage(q)
     follow = followup_intent(q)
+    if follow == "vendor_scorecard" and plan.items and not SCORECARD_WORDS.search(q):
+        follow = None                                      # "which vendor is best for GASKET-X" names an item: it is a comparison for that item, not the ranking of all vendors
     if plan.manage:
         plan.intent = "order_manage"
     elif not plan.docs and wants_transfer(q):
@@ -589,6 +596,10 @@ class ChatService:
             if plan.near:
                 return self._ask_which(plan.near, "I could not tell exactly which item you mean.")
             return Answer("help", HELP.format(example=sample), status="help", follow_ups=["What is running low?", f"How much {sample} do we have?", "What is waiting for my OK?"])
+        if plan.unknown_codes and not plan.items and not plan.near and plan.intent in ("item_stock", "stock_overview", "vendor_compare"):
+            said = " or ".join(plan.unknown_codes[:3])         # an item that does not exist is said so, not answered with a different question's answer
+            return Answer(plan.intent, f"I could not find an item with the code {said}. Give me an item's code or its full name, for example {sample}.", status="clarify",
+                          follow_ups=[f"How much {sample} do we have?", "What is running low?"])
         if plan.intent == "pending_approvals":
             return self._pending(can_decide)
         if plan.intent in FOLLOWUP_INTENTS:
@@ -1017,7 +1028,7 @@ class ChatService:
                       [f"How much {codes[0]} do we have?", f"Purchase orders for {codes[0]}"], codes)
 
     def _documents(self, plan: Plan, items: list[ItemInfo]) -> Answer:
-        today = date.today()
+        today = self.inventory.today()                               # the application's date (its clock and time zone), like every other answer: never the machine's
         since = None if (plan.status in ("open", "overdue") and not plan.period_given and not plan.docs) else today - timedelta(days=plan.since_days)
         code = plan.items[0].code if plan.items else None
         docs: list[dict] = []

@@ -8,6 +8,9 @@ nothing is written to ERPNext (the order request used for the second-opinion cas
     python -m tools.e2e.agents_eval --config ... --model llama3.2:3b --cases brief,ask --out report.md
     python -m tools.e2e.agents_eval --config ... --base-url https://llm.example.com --allow-remote      # a hosted model: the data listed in docs/PRIVACY.md is sent there
 
+    python -m tools.e2e.agents_eval --suite golden --model llama3.1                                       # the golden cases that need a model, on the demo ERP
+    python -m tools.e2e.agents_eval --suite golden --provider anthropic --against ollama:llama3.1 --out compare.md      # two models side by side
+
 A run takes minutes per task on a laptop CPU; use --cases to choose. The report is a Markdown table you can paste into docs/AGENTS.md.
 """
 from __future__ import annotations
@@ -174,7 +177,18 @@ def main(argv: Optional[list[str]] = None) -> int:
     p.add_argument("--timeout", type=int, default=900, help="seconds to wait for ONE model reply")
     p.add_argument("--max-steps", type=int, default=6)
     p.add_argument("--out", help="write the Markdown report here")
-    return run(p.parse_args(argv))
+    p.add_argument("--suite", choices=["legacy", "golden"], default="legacy", help="legacy = the three cases above, on your real ERPNext; golden = the cases of tests/evals that need a model, on the demo ERP "
+                                                                                    "(the same cases CI replays with a scripted model; see docs/EVALUATION.md)")
+    p.add_argument("--group", action="append", default=[], help="golden: only this group of cases (repeatable)")
+    p.add_argument("--case", action="append", default=[], help="golden: only this case id (repeatable)")
+    p.add_argument("--against", help="golden: a second model to run the same cases on and compare, as provider:model (or an Ollama model name); needs --allow-remote if it is not on this machine")
+    p.add_argument("--against-base-url", default="", help="golden: the second model's address (empty = the provider's own)")
+    p.add_argument("--record", metavar="DIR", help="golden: save what each model said as a case with an llm: script, ready to become a golden case once you have checked it")
+    args = p.parse_args(argv)
+    if args.suite == "golden":
+        from tools.evals.live import golden
+        return golden(args)
+    return run(args)
 
 
 if __name__ == "__main__":

@@ -6,11 +6,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
+from . import metrics, obs, tracing
 from .audit import AuditChain
 from .history import DecisionHistory
+from .jobs import JobLog
 from .agents.service import AgentService
 from .agents.store import AgentLog
-from .api.hardening import MIN_KEY_LENGTH, access_key_warning, weak_key
+from .api.hardening import MIN_KEY_LENGTH, access_key_warning, demo_key_problem, weak_key
 from .approvals.channels.base import Channel
 from .approvals.channels.registry import build_channels
 from .approvals.models import Recipient
@@ -30,6 +32,10 @@ from .toolkit import Toolkit
 from .workorders import WorkOrderQueue
 
 log = logging.getLogger(__name__)
+
+
+class StartupRefused(ValueError):
+    """The configuration is one the program will not start with. The text says why in plain words; the command line prints it without a traceback."""
 
 
 @dataclass
@@ -58,6 +64,9 @@ class App:
     reschedule_scopes: tuple[str, ...] = ()        # settings sections whose change reschedules the packs' jobs (besides system and agents)
     audit: Optional[Any] = None                     # the seal over the decision history (audit.py)
     history: Optional[Any] = None                   # "Why did you do that?": every past decision with its reasoning (history.py)
+    observability: Optional[Any] = None             # the `observability:` section (obs.py ObsSettings): log format, metrics, tracing
+    job_log: Optional[Any] = None                   # when each scheduled job last ran and how it ended (jobs.py)
+    scheduler: Optional[Any] = None                 # the running scheduler, set by `serve` (None in a process that only reads or answers one command): /ready looks at it
 
     def __getattr__(self, name: str) -> Any:
         # reached only when the application itself has no such attribute: a service a pack provided
@@ -94,6 +103,18 @@ def build_app(
     login: Optional[ErpNextLogin] = None,
 ) -> App:
     cfg = config if config is not None else load_config(config_path)
+    problem = demo_key_problem(cfg)             # before anything is created or opened
+    if problem:
+        raise StartupRefused(problem)
+    try:
+        observability = obs.settings_from(cfg)
+    except ValueError as exc:
+        raise StartupRefused(str(exc)) from None
+    obs.register_secrets_from_config(cfg)       # so that no log line, in any format, can carry a key, a token or a phone number that this configuration holds
+    try:
+        tracing.configure(observability.tracing, observability.otlp_endpoint, observability.service_name)       # off by default; on, it needs the `otel` extra and says so if it is missing
+    except tracing.TracingUnavailable as exc:
+        raise StartupRefused(str(exc)) from None
 
     path = db_path or cfg["database"]["path"]
     if path != ":memory:":
@@ -140,8 +161,9 @@ def build_app(
     sessions = SessionStore(login, ttl_seconds=float(auth_cfg.get("session_hours", 12)) * 3600,
                             recheck_seconds=float(auth_cfg.get("recheck_minutes", 15)) * 60) if login else None
     app = App(cfg, db, settings, erp, channels, router, approvals, workorders, tokens, clock, packs,
-              login=login, sessions=sessions, throttle=LoginThrottle() if login else None)
+              login=login, sessions=sessions, throttle=LoginThrottle() if login else None, observability=observability)
     app.agent_log = AgentLog(db, clock)
+    app.job_log = JobLog(db, clock)
     app.toolkit = Toolkit(app, log_call=app.agent_log.log_tool)
     app.toolkit.is_enabled = packs.is_enabled      # a pack that is switched off answers nothing, at once
     app.agents = AgentService(app)                 # the optional 'mcp' package is only needed when an agent actually runs
@@ -156,6 +178,7 @@ def build_app(
         app.audit.sweep()                          # what was closed before (or while the application was stopped) is sealed now
     except Exception:  # noqa: BLE001 - a seal that cannot be written must not stop the application; `history --verify` reports what is not sealed
         log.exception("could not seal the decision history")
+    metrics.attach(app)                            # recording and /metrics on or off, as `observability.metrics` says (off by default)
     return app
 
 

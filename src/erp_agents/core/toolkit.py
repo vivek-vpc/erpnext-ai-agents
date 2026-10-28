@@ -19,6 +19,7 @@ import time
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
+from . import metrics, obs, tracing
 from .common import Actor, untrusted
 
 log = logging.getLogger(__name__)
@@ -151,21 +152,27 @@ class Toolkit:
     # ---------------------------------------------------------------- the one entry point
     def call(self, name: str, arguments: Optional[dict[str, Any]], actor: Actor, via: str = "api", task_id: Optional[str] = None) -> dict[str, Any]:
         """Run one tool. Never raises: a refusal or a failure comes back as {"error": "..."} so an agent can read it and carry on.
-        The checks here apply to every pack and every way in: the tool exists, its pack is switched on, the caller's role allows it, the arguments fit."""
+        The checks here apply to every pack and every way in: the tool exists, its pack is switched on, the caller's role allows it, the arguments fit.
+        `task_id`: the agent task this call belongs to; everything logged while the call runs (the ERPNext requests the tool makes ...) carries it."""
+        with obs.bind(task_id=task_id), tracing.span("tool.call", via=via):
+            return self._call(name, arguments, actor, via, task_id)
+
+    def _call(self, name: str, arguments: Optional[dict[str, Any]], actor: Actor, via: str, task_id: Optional[str]) -> dict[str, Any]:
         t0 = time.monotonic()
         entry = self._tools.get(name)
         args: dict[str, Any] = dict(arguments or {})
         error: Optional[str] = None
+        refused: Optional[str] = None                        # why it did not run or did not work, as a word (the line in the log never quotes what the caller sent)
         result: dict[str, Any]
         if entry is None:
             available = ", ".join(t.spec.name for t in self._tools.values() if self.is_enabled(t.pack))
-            result, error = {"error": f"unknown tool '{untrusted(name, 40)}'. Available: {available}"}, "unknown tool"
+            result, error, refused = {"error": f"unknown tool '{untrusted(name, 40)}'. Available: {available}"}, "unknown tool", "unknown_tool"
             args = {}                                        # nothing a stranger sent is kept for an unknown tool
         elif not self.is_enabled(entry.pack):
-            result, error = {"error": f"not available: the {entry.pack} pack is switched off"}, "pack off"
+            result, error, refused = {"error": f"not available: the {entry.pack} pack is switched off"}, "pack off", "pack_off"
             args = {}
         elif not actor.has_role(entry.spec.role):
-            result, error = {"error": f"not allowed: '{name}' needs the {entry.spec.role} level in ERPNext"}, "not allowed"
+            result, error, refused = {"error": f"not allowed: '{name}' needs the {entry.spec.role} level in ERPNext"}, "not allowed", "not_allowed"
         else:
             try:
                 args, ignored = coerce_arguments(entry.spec, args)
@@ -173,18 +180,25 @@ class Toolkit:
                 if ignored:
                     result["ignored_arguments"] = ignored
                 if "error" in result:
-                    error = untrusted(result["error"], 200)
+                    error, refused = untrusted(result["error"], 200), "tool_error"
             except ValueError as exc:
-                result, error = {"error": untrusted(exc, 300)}, untrusted(exc, 200)
+                result, error, refused = {"error": untrusted(exc, 300)}, untrusted(exc, 200), "invalid_arguments"
                 args = {}                                    # arguments that did not fit the tool are not written to the record
             except Exception as exc:  # noqa: BLE001 - a tool must never take the agent down with it
                 log.exception("tool %s failed", name)
-                result, error = {"error": f"could not do that just now ({type(exc).__name__}: {untrusted(exc, 160)})"}, f"{type(exc).__name__}"
+                result, error, refused = {"error": f"could not do that just now ({type(exc).__name__}: {untrusted(exc, 160)})"}, f"{type(exc).__name__}", type(exc).__name__
         if len(json.dumps(result, default=str)) > MAX_RESULT_CHARS:
             result = {"warning": "result shortened", **_shorten(result)}
+        ms = int((time.monotonic() - t0) * 1000)
+        shown = name if entry is not None else "unknown"
+        obs.event("tool_call", logging.INFO if error is None else logging.WARNING, tool=shown, via=via, ok=error is None, ms=ms, refused=refused)
+        metrics.record_tool(shown, via, error is None, refused, ms / 1000)
+        tracing.annotate(tool=shown, ok=error is None, refused=refused)
+        if error is not None:
+            tracing.mark_failed(refused or "error")
         if self.log_call is not None:
             try:
-                self.log_call(actor.id, via, name, args, error is None, int((time.monotonic() - t0) * 1000), task_id, error)
+                self.log_call(actor.id, via, name, args, error is None, ms, task_id, error)
             except Exception:  # noqa: BLE001
                 log.exception("could not log the call of %s", name)
         return result

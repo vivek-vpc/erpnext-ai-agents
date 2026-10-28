@@ -1,0 +1,84 @@
+# Golden cases: the AI agent answers a question well. The scripted model asks for tools, then writes an answer in which every figure and code came from a tool's result.
+# The agent is the one an unplaced question reaches (chat) or the Ask box of the console (entry: agent). `${tool(args).field}` is read from the tool's own result.
+cases:
+  - id: agent-answers-a-stock-question
+    group: agent_good
+    note: One tool call, then an answer that quotes the tool's figure.
+    entry: agent
+    as: viewer
+    question: How much BOLT-M8 do we have?
+    reply: good
+    llm:
+      - tools: [[stock_status, {item_code: BOLT-M8}]]
+      - say: I have what I need.
+      - answer: {answerable: true, answer: "BOLT-M8 has ${stock_status(item_code=BOLT-M8).on_hand} pcs on hand."}
+    expect:
+      status: answered
+      source: model
+      agent: inventory
+      outcome: accepted
+      tools:
+        - stock_status: {item_code: BOLT-M8}
+      only_tools: true
+      must_include: ["300"]
+
+  - id: agent-answers-a-vendor-question
+    group: agent_good
+    note: The purchasing agent takes questions about vendors and prices, and quotes the comparison tool.
+    entry: agent
+    as: viewer
+    question: Which vendor is cheapest for BOLT-M8 for 500?
+    reply: good
+    llm:
+      - tools: [[vendor_options, {item_code: BOLT-M8, qty: 500}]]
+      - say: I have what I need.
+      - answer:
+          answerable: true
+          answer: "${vendor_options(item_code=BOLT-M8,qty=500).best} is the best vendor for 500 pcs of BOLT-M8: ${vendor_options(item_code=BOLT-M8,qty=500).vendors.0.price_each} each, ${vendor_options(item_code=BOLT-M8,qty=500).vendors.0.total} in total, delivery in ${vendor_options(item_code=BOLT-M8,qty=500).vendors.0.delivery_days} days."
+    expect:
+      status: answered
+      agent: purchasing
+      outcome: accepted
+      tools:
+        - vendor_options: {item_code: BOLT-M8, qty: 500}
+      must_include: ["Prime Supplies", "re:18,?435"]
+
+  - id: agent-names-the-late-orders
+    group: agent_good
+    note: A question about late deliveries is answered from the late-deliveries tool, order number and days included.
+    entry: agent
+    as: viewer
+    setup:
+      - open_order: {name: PO-EXT-0001, item: OIL-5L, qty: 100, due_in_days: -5, received: 20}
+    question: Which purchase orders are late?
+    reply: good
+    llm:
+      - tools: [[late_deliveries, {}]]
+      - say: I have what I need.
+      - answer: {answerable: true, answer: "PO-EXT-0001 from Prime Supplies is 5 days late, with 80 cans of OIL-5L still to come."}
+    expect:
+      status: answered
+      agent: purchasing
+      outcome: accepted
+      tools: [late_deliveries]
+      must_include: ["PO-EXT-0001", "re:\\b5 days", "80"]
+
+  - id: agent-prepares-the-request-the-person-asked-for
+    group: agent_good
+    note: An approver asked for an order in so many words, so the agent may prepare the request for them to answer. It orders nothing; the person presses the button.
+    entry: agent
+    world: quiet
+    question: Create a purchase order for BOLT-M8 for 500
+    reply: good
+    llm:
+      - tools: [[prepare_order_request, {item_code: BOLT-M8, qty: 500, reason: the manager asked}]]
+      - say: I have what I need.
+      - answer: {answerable: true, answer: "I prepared the request for BOLT-M8 and sent it to the approvers."}
+    expect:
+      status: answered
+      agent: purchasing
+      outcome: accepted
+      tools:
+        - prepare_order_request: {item_code: BOLT-M8, qty: 500}
+      must_include: ["sent it for approval", "Nothing is ordered"]
+      prepared: 1

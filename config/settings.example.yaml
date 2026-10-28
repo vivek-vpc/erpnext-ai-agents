@@ -94,6 +94,16 @@ server:
   #                              # (everything else answers 404 to anybody not at this machine)
   # docs: false                  # true publishes the interactive API documentation at /docs
 
+# ---------------------------------------------------------------- Watching it run (optional; see docs/OBSERVABILITY.md)
+# Read once at start-up. Everything here is off or as it always was when the section is absent. /health and /ready need no setting.
+# observability:
+#   log_format: text             # text (one line each, as before) | json (one object per line, for a log collector). Also --log-format, or $ERP_AGENTS_LOG_FORMAT
+#   metrics: false               # true serves Prometheus text at /metrics, for the scraper's token ($ERP_AGENTS_METRICS_TOKEN, 24+ characters) or a signed-in administrator
+#   tracing: false               # true sends OpenTelemetry spans (names and counts, never text). Needs:  pip install "erpnext-ai-agents[otel]"
+#   otlp_endpoint: ""            # where the spans go (OTLP over HTTP), for example http://localhost:4318/v1/traces. Empty = the exporter's own default
+#   service_name: erpnext-ai-agents
+#   pending_hours: 24            # a request waiting longer than this is a backlog: `erp-agents doctor` warns, and the example alert rule in the doc uses the same number
+
 # ---------------------------------------------------------------- AI agents and the MCP server (optional; see docs/AGENTS.md and docs/PRIVACY.md)
 # Needs:  pip install "erpnext-ai-agents[agents]"   and a model that supports tool calling, for example:  ollama pull llama3.1
 # These are the starting values. The same choices are on the Settings > AI agents screen, which overrides this file.

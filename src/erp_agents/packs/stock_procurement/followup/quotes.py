@@ -64,6 +64,8 @@ class QuoteRounds:
         fields["updated_at"] = iso(self.app.clock())
         cols = ", ".join(f"{k}=?" for k in fields)
         self.app.db.execute(f"UPDATE quote_rounds SET {cols} WHERE id=?", (*fields.values(), round_id))  # column names come from this module, values are bound  # nosec B608
+        if fields.get("status") in ("compared", "ordered", "closed"):
+            self.messenger.close_replies("quote", round_id)           # the round is over: a vendor's later message is not a reply to the request for a price
 
     # ---------------------------------------------------------------- 1. prepare
     def candidates(self, item_code: str) -> list[dict[str, Any]]:

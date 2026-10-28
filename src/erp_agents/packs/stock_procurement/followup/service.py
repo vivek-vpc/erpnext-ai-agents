@@ -22,7 +22,10 @@ class FollowUp:
         self.quotes = QuoteRounds(app, self.messenger)
 
     def daily(self, dry_run: bool = False) -> dict[str, Any]:
-        return {"deliveries": self.chaser.run(dry_run), "receipts": self.receipts.run(dry_run)}
+        report: dict[str, Any] = {"deliveries": self.chaser.run(dry_run), "receipts": self.receipts.run(dry_run)}
+        if not dry_run:
+            report["hashes_erased"] = self.messenger.forget_expired()           # a vendor's hash has no use after the reply window
+        return report
 
 
 class StockInsight:

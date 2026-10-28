@@ -6,10 +6,12 @@ WhatsApp), registers what it adds to the core's registries (settings, database t
 """
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
 from erp_agents.core.common import Actor
+from erp_agents.core.config import HASH_KEY_ENV, hash_key_state
 from erp_agents.core.packs import Pack, load_manifest
 
 from .agents.tasks import StockAgentTasks
@@ -30,6 +32,7 @@ from .schema import ensure_schema
 from .settings import attach as attach_settings
 from .tools import StockTools
 
+log = logging.getLogger(__name__)
 HERE = Path(__file__).resolve().parent
 MANIFEST = load_manifest(HERE / "manifest.yaml")
 NAME = MANIFEST.name
@@ -60,6 +63,9 @@ class StockProcurementPack(Pack):
         app.reschedule_scopes = (*(getattr(app, "reschedule_scopes", None) or ()), "followup")     # changing the follow-up times takes effect without a restart
         inventory.extra_sections.append(app.services["stock_insight"].substitutes.section)       # an approved alternative, when an item is short and cannot come in time
         app.approvals.unknown_sender_handlers.append(app.services["followup"].messenger.take_reply)  # a vendor answering on WhatsApp
+        if "whatsapp" in app.channels and hash_key_state() != "ok":
+            log.warning("%s is %s: a vendor's WhatsApp reply cannot be recognised until you put a long random value (32+ characters) in .env (see .env.example).",
+                        HASH_KEY_ENV, "not set" if hash_key_state() == "missing" else "shorter than 32 characters")
         app.conversation = Conversation(app.approvals, assistant, chat, app.router, synchronous=bool((cfg.get("conversation") or {}).get("synchronous")))
 
         app.approvals.no_reminder_kinds.update(NO_REMINDER_KINDS)

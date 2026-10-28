@@ -1,0 +1,66 @@
+# Golden cases: "what is running low?" and friends. The rules count the items; no model is involved.
+cases:
+  - id: overview-running-low
+    group: stock_overview
+    note: The daily question. Items that are fine are counted, not listed.
+    question: What is running low?
+    expect:
+      intent: stock_overview
+      source: data
+      must_include: ["Of 10 items", "2 to order now", "4 will run low soon", "Relay 12V (RELAY-12V)", "Hydraulic Oil 5L (OIL-5L)"]
+      must_not_include: ["Steel Sheet 2mm"]
+
+  - id: overview-nothing-out-of-stock
+    group: stock_overview
+    note: A plain no.
+    question: what is out of stock
+    expect:
+      intent: stock_overview
+      must_include: ["Nothing is out of stock."]
+
+  - id: overview-one-item-out
+    group: stock_overview
+    note: Zero on hand is named.
+    setup:
+      - stock: {item: BOLT-M8, on_hand: 0}
+    question: what is out of stock
+    expect:
+      intent: stock_overview
+      must_include: ["1 item is out of stock", "BOLT-M8"]
+      must_not_include: ["OIL-5L"]
+
+  - id: overview-two-items-out
+    group: stock_overview
+    note: More than one item out.
+    setup:
+      - stock: {item: BOLT-M8, on_hand: 0}
+      - stock: {item: OIL-5L, on_hand: 0}
+    question: what is out of stock
+    expect:
+      intent: stock_overview
+      must_include: ["2 items are out of stock", "BOLT-M8", "OIL-5L"]
+
+  - id: overview-one-group
+    group: stock_overview
+    note: A group of items named in the question narrows the overview to it.
+    question: what is running low in Fasteners
+    expect:
+      intent: stock_overview
+      must_include: ["Of 2 items in Fasteners", "BOLT-M8", "GASKET-X"]
+      must_not_include: ["Relay 12V", "Hydraulic Oil"]
+
+  - id: overview-everything-fine
+    group: stock_overview
+    note: When nothing needs ordering the answer says that and lists nothing.
+    setup:
+      - stock: {item: BOLT-M8, on_hand: 5000}
+      - stock: {item: OIL-5L, on_hand: 5000}
+      - stock: {item: RELAY-12V, on_hand: 5000}
+      - stock: {item: FILTER-A, on_hand: 5000}
+      - stock: {item: PAINT-RED, on_hand: 5000}
+      - stock: {item: GASKET-X, on_hand: 5000}
+    question: what is running low
+    expect:
+      intent: stock_overview
+      must_include: ["10 are fine", "Nothing needs ordering right now"]
+      must_not_include: ["Needing attention"]

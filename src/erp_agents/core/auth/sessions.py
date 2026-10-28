@@ -18,6 +18,7 @@ from collections import Counter, deque
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
+from .. import obs
 from ..acting import ActingAs
 from .erpnext import ErpNextLogin, Identity, LoginError
 
@@ -45,6 +46,7 @@ class SessionStore:
 
     def create(self, session: Any, identity: Identity) -> str:
         token = secrets.token_urlsafe(32)
+        obs.register_secret(token, dynamic=True)                # the browser's token must not reach a log line, whatever logs it
         now = self.clock()
         with self._lock:
             self._expire(now)

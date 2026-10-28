@@ -14,11 +14,13 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
 import anyio
 
+from .. import metrics, obs, tracing
 from ..assistant.verify import HEDGES, _contains, numbers
 from .llm import LLMError, Reply, ToolChatClient, salvage_tool_call
 
@@ -211,8 +213,10 @@ class AgentRuntime:
                     out.status, out.data, out.problems = "ok", data, []
                     break
                 out.status, out.problems = "rejected", problems
+                metrics.GROUNDING_REJECTS.inc(agent=job.agent, task=job.task)
                 if attempt == 1 or out.steps >= self.max_steps:
                     break
+                metrics.GROUNDING_REPAIRS.inc(agent=job.agent, task=job.task)
                 messages += [{"role": "assistant", "content": reply.content},
                              {"role": "user", "content": "Your answer was rejected: " + "; ".join(problems[:4]) + ". Fix exactly that and reply again in the same JSON format, "
                                                          "using only numbers and codes that appear in the tool results."}]
@@ -226,7 +230,21 @@ class AgentRuntime:
     # ------------------------------------------------------------------------------------------------ pieces
     async def _chat(self, out: Outcome, messages: list[dict[str, Any]], kind: str, tools: Optional[list[dict[str, Any]]] = None, schema: Optional[dict[str, Any]] = None) -> Reply:
         out.steps += 1
-        reply = await anyio.to_thread.run_sync(lambda: self.llm.chat(messages, tools, schema))
+        started = time.monotonic()
+        who = {"provider": getattr(self.llm, "provider", None), "model": getattr(self.llm, "model", None), "kind": kind}
+        with tracing.span("llm.call", **who) as sp:
+            try:
+                reply = await anyio.to_thread.run_sync(lambda: self.llm.chat(messages, tools, schema))
+            except LLMError as exc:                                      # the model could not be reached or did not reply: one line, the class of the failure, not its text
+                seconds = time.monotonic() - started
+                obs.event("llm_call", logging.WARNING, **who, ms=int(seconds * 1000), outcome="error", error=type(exc).__name__)
+                metrics.record_llm(who["provider"], who["model"], kind, "error", seconds)
+                sp.set(outcome="error")
+                raise
+            sp.set(outcome="ok", tokens_in=reply.prompt_tokens, tokens_out=reply.output_tokens)
+        seconds = time.monotonic() - started
+        obs.event("llm_call", **who, ms=int(seconds * 1000), tokens_in=reply.prompt_tokens, tokens_out=reply.output_tokens, outcome="ok")
+        metrics.record_llm(who["provider"], who["model"], kind, "ok", seconds, reply.prompt_tokens, reply.output_tokens)
         out.timings.append({"step": out.steps, "kind": kind, "seconds": round(reply.seconds, 1), "load": round(reply.load_seconds, 1), "reading_prompt": round(reply.prompt_seconds, 1),
                             "writing": round(reply.generate_seconds, 1), "prompt_tokens": reply.prompt_tokens, "output_tokens": reply.output_tokens})
         out.llm_seconds += reply.seconds

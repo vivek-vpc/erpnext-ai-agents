@@ -1,0 +1,79 @@
+# Golden cases: a question about ONE item. The plain rules read the numbers from the demo ERP (MockERP, seed 7, today = 16 Oct 2026); no model is involved.
+# `must_include` is what the person must read, `must_not_include` what they must not. Numbers here are pinned on purpose: a change in an answer should be a decision.
+cases:
+  - id: item-stock-by-code
+    group: item_stock
+    note: The plainest question, an exact item code.
+    question: How much BOLT-M8 do we have?
+    expect:
+      intent: item_stock
+      source: data
+      must_include: ["Bolt M8 x 40", "300 pcs", "7.3 days", "Order soon"]
+
+  - id: item-stock-days-left
+    group: item_stock
+    note: Days of cover asked for by code, in another wording.
+    question: how many days of stock are left for OIL-5L
+    expect:
+      intent: item_stock
+      must_include: ["Hydraulic Oil 5L", "18 cans", "6.3 days", "Order now"]
+
+  - id: item-stock-by-full-name
+    group: item_stock
+    note: The item is named in words, not by code; a full name is enough.
+    question: when will hydraulic oil 5l run out
+    expect:
+      intent: item_stock
+      must_include: ["OIL-5L", "6.3 days"]
+
+  - id: item-stock-with-an-order-on-the-way
+    group: item_stock
+    note: Stock that is low but covered by an order that arrives in time or late is said so.
+    question: Tell me about RELAY-12V
+    expect:
+      intent: item_stock
+      must_include: ["70 pcs", "500 pcs are on order, due 28 Oct"]
+
+  - id: item-stock-healthy-item
+    group: item_stock
+    note: A healthy item gets no reorder suggestion.
+    question: stock of STEEL-2MM?
+    expect:
+      intent: item_stock
+      must_include: ["600 sheets", "Status: Fine"]
+      must_not_include: ["Suggested reorder"]
+
+  - id: item-stock-without-recent-sales
+    group: item_stock
+    note: No usage means no days-left figure; the answer says so instead of inventing one.
+    question: How much DEAD-Z do we have?
+    expect:
+      intent: item_stock
+      must_include: ["50 pcs", "no recent sales", "not known"]
+      must_not_include: ["it lasts about", "so it lasts"]
+
+  - id: item-stock-held-in-two-warehouses
+    group: item_stock
+    note: Stock is shown warehouse by warehouse, with what is promised to customers.
+    setup:
+      - item:
+          code: WIDGET-1
+          name: Widget One
+          per_day: 5
+          on_hand: 0
+          warehouses:
+            "Stores - TTC": {on_hand: 80, reserved: 10}
+            "Finished Goods - TTC": {on_hand: 20}
+    question: How much WIDGET-1 do we have?
+    expect:
+      intent: item_stock
+      must_include: ["100 pcs (90 available after 10 promised", "Stores - TTC 80 pcs", "Finished Goods - TTC 20 pcs"]
+
+  - id: item-stock-unknown-code-is-not-hidden
+    group: item_stock
+    note: A code that does not exist is called unknown, not answered with a different question's answer.
+    question: How much NOPE-99 do we have?
+    expect:
+      status: clarify
+      must_include: ["I could not find an item with the code NOPE-99"]
+      must_not_include: ["Needing attention", "you have"]

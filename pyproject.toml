@@ -32,6 +32,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8", "httpx>=0.27", "bandit>=1.8", "pip-audit>=2.7"]
 agents = ["mcp>=2.3,<3", "jsonschema>=4.20"]       # the AI agents and the MCP server (MIT-licensed SDK); everything else works without it
+otel = ["opentelemetry-api>=1.30,<2", "opentelemetry-sdk>=1.30,<2", "opentelemetry-exporter-otlp-proto-http>=1.30,<2"]       # optional tracing (observability.tracing: true); docs/OBSERVABILITY.md
 
 [project.urls]
 Homepage = "https://github.com/vivek-vpc/erpnext-ai-agents"

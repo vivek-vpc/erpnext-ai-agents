@@ -11,22 +11,26 @@ from __future__ import annotations
 import hmac
 import json
 import logging
+import os
 from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
-from fastapi.responses import PlainTextResponse, RedirectResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from ..approvals.inbound import process_inbound
 from ..auth.erpnext import LoginError, Verification
+from .. import metrics
 from ..acting import acting_as
 from ..bootstrap import App
 from ..common import Actor
+from ..health import readiness
 from ..settings_store import SettingsError
+from .observability import RequestContext
 from .hardening import MIN_KEY_LENGTH, BodyLimit, RemoteAccess, SecurityHeaders, access_key_mode, clean_for_log, console_policy, is_local_request, script_hash, weak_key
 
 log = logging.getLogger(__name__)
@@ -217,6 +221,30 @@ def create_app(app_ctx: App, on_system_change=None, lifespan=None) -> FastAPI:
         except HTTPException:
             return {"ok": True}
         return {"ok": True, "erp_reachable": ctx.erp.healthcheck(), "channels": sorted(ctx.channels)}
+
+    @api.get("/ready")
+    def ready(request: Request) -> JSONResponse:
+        """Can it do its work? (/health only says it is alive.) Anybody may ask and is told yes or no, with 503 for no; a signed-in person also gets the checks and why."""
+        checks = readiness(ctx)
+        ok = all(c.ok for c in checks)
+        body: dict[str, Any] = {"ready": ok}
+        try:
+            current_actor(request)
+            body["checks"] = [{"name": c.name, "ok": c.ok, "detail": c.detail} for c in checks]
+        except HTTPException:
+            pass
+        return JSONResponse(body, status_code=200 if ok else 503)
+
+    # ------------------------------------------------------------------ metrics: not there at all unless `observability.metrics: true`
+    if ctx.observability is not None and ctx.observability.metrics:
+        @api.get("/metrics", include_in_schema=False)
+        def metrics_page(request: Request) -> PlainTextResponse:
+            """Prometheus text. Allowed with the scraper's own bearer token (ERP_AGENTS_METRICS_TOKEN, 24 characters or more) or an administrator's sign-in; nobody else."""
+            token, presented = os.environ.get(metrics.SCRAPER_ENV, "").strip(), bearer(request)
+            if not (len(token) >= MIN_KEY_LENGTH and presented and hmac.compare_digest(presented.encode(), token.encode())):
+                if not current_actor(request).has_role("admin"):         # a stranger is turned away first (401)
+                    raise HTTPException(403, "admin role required")
+            return PlainTextResponse(metrics.REGISTRY.render(), media_type=metrics.CONTENT_TYPE)
 
     # ------------------------------------------------------------------ packs
     @api.get("/api/v1/packs")
@@ -470,4 +498,5 @@ def create_app(app_ctx: App, on_system_change=None, lifespan=None) -> FastAPI:
     api.add_middleware(BodyLimit)
     api.add_middleware(RemoteAccess, mode=lambda: str((ctx.config.get("server") or {}).get("remote_access", "full")).lower())
     api.add_middleware(SecurityHeaders, console_csp=console_policy(script_hash(web_dir / "index.html") if web_dir is not None else None))
+    api.add_middleware(RequestContext)                         # outermost: the request id is bound for everything inside, and returned in X-Request-ID
     return api

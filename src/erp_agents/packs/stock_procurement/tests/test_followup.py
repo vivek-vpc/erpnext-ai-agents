@@ -430,7 +430,7 @@ def test_an_older_stock_database_is_upgraded_to_the_follow_up_tables(tmp_path):
     AlertRepo(db)
     tables = {r["name"] for r in db.query("SELECT name FROM sqlite_master WHERE type='table'")}
     assert {"vendor_messages", "delivery_chases", "quote_rounds", "cycle_counts", "stock_transfers"} <= tables and db.query_one("SELECT item_code FROM alerts")["item_code"] == "BOLT-M8"
-    assert db.query_one("SELECT version FROM pack_schema WHERE pack=?", (stock.NAME,))["version"] == stock.VERSION == 3
+    assert db.query_one("SELECT version FROM pack_schema WHERE pack=?", (stock.NAME,))["version"] == stock.VERSION == 4
     assert list(tmp_path.glob("old.db.before-schema-*"))                                                         # copied aside first
     db.close()
 

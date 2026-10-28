@@ -1,0 +1,75 @@
+# Golden cases: the questions answered by the same read-only tools the AI agents use (late deliveries, receipts that do not match, dead stock, substitutes, forecasts).
+# `tools` lists the tool call that must have been made; the chat makes it as a viewer, so even an approver's question cannot reach a tool that prepares anything.
+cases:
+  - id: tools-late-deliveries
+    group: followup_tools
+    note: A late order is named with how late it is and what the stock does without it.
+    setup:
+      - open_order: {name: PO-EXT-0001, item: OIL-5L, qty: 100, due_in_days: -5, received: 20}
+    question: Which deliveries are late?
+    expect:
+      intent: late_deliveries
+      source: data
+      tools: [late_deliveries]
+      only_tools: true
+      must_include: ["1 purchase order is late", "PO-EXT-0001 from Prime Supplies, 5 days late", "80 cans of OIL-5L still to come"]
+
+  - id: tools-no-late-deliveries
+    group: followup_tools
+    note: Nothing late is said plainly.
+    question: Which deliveries are late?
+    expect:
+      intent: late_deliveries
+      tools: [late_deliveries]
+      must_include: ["No purchase order is late"]
+
+  - id: tools-receipts-that-do-not-match
+    group: followup_tools
+    note: A receipt with more goods and a higher price than the order is reported with the difference in money.
+    setup:
+      - receipt: {name: MAT-PRE-0001, received: 120, rate: 10.5}
+    question: Which goods receipts don't match their order?
+    expect:
+      intent: receipt_mismatches
+      tools: [receipt_mismatches]
+      must_include: ["MAT-PRE-0001 from Prime Supplies", "20 pcs more than ordered", "+5.0%"]
+
+  - id: tools-dead-stock
+    group: followup_tools
+    note: Dead stock is listed with the cash it ties up and what to do.
+    question: What is dead stock?
+    expect:
+      intent: slow_stock
+      tools: [slow_stock]
+      must_include: ["Obsolete Part Z (DEAD-Z), dead: 50 pcs", "880.00 tied up"]
+
+  - id: tools-an-approved-alternative
+    group: followup_tools
+    note: An alternative is only what the ERP lists as approved.
+    setup:
+      - item: {code: OIL-5L-ALT, name: Hydraulic Oil 5L (other brand), per_day: 1, on_hand: 40}
+      - alternative: {item: OIL-5L, alt: OIL-5L-ALT}
+    question: Is there a substitute for OIL-5L?
+    expect:
+      intent: substitutes
+      tools:
+        - substitutes: {item_code: OIL-5L}
+      must_include: ["Approved alternatives of Hydraulic Oil 5L (OIL-5L)", "OIL-5L-ALT): 40 available"]
+
+  - id: tools-no-alternative-is-not-invented
+    group: followup_tools
+    note: No approved alternative means none is suggested.
+    question: Is there a substitute for OIL-5L?
+    expect:
+      intent: substitutes
+      must_include: ["lists no approved alternative"]
+
+  - id: tools-forecast-for-one-item
+    group: followup_tools
+    note: The forecast is for the named item, six weeks.
+    question: Forecast for GASKET-X
+    expect:
+      intent: demand_forecast
+      tools:
+        - demand_forecast: {item_code: GASKET-X}
+      must_include: ["Gasket Type X (GASKET-X)", "reorder point 91.5 pcs", "stock position 140 pcs"]

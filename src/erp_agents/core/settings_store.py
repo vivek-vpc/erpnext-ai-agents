@@ -6,6 +6,7 @@ Everything registered is validated, audited and editable the same way as the cor
 """
 from __future__ import annotations
 
+import logging
 from typing import Any, Callable, Optional
 
 from pydantic import ValidationError
@@ -14,6 +15,8 @@ from .common import Actor, Clock, iso, utcnow
 from .packs import PackSettings
 from .policy import AgentSettings, AssistantSettings, SystemSettings
 from .storage import Database, dumps, loads
+
+log = logging.getLogger(__name__)
 
 SCOPES = ("global", "group", "item")
 GLOBAL_KEY = "*"
@@ -174,7 +177,17 @@ class SettingsStore:
         if kind not in self._sections:
             raise SettingsError(f"unknown settings section {kind!r}")
         model, base = self._sections[kind]
-        return model.model_validate({**base, **self._section_overrides(kind)})
+        saved = self._section_overrides(kind)
+        try:
+            return model.model_validate({**base, **saved})
+        except ValidationError as exc:
+            # A value saved under an older, looser rule (for example a message template the strict check now refuses) must not stop the whole module from loading:
+            # that one value is ignored, the default is used, and the log says which.
+            bad = {str(e["loc"][0]) for e in exc.errors() if e.get("loc") and str(e["loc"][0]) in saved}
+            if not bad:
+                raise
+            log.warning("the saved value of %s.%s is no longer valid (%s) and is ignored: the default is used until it is saved again", kind, ", ".join(sorted(bad)), _first_error(exc))
+            return model.model_validate({**base, **{k: v for k, v in saved.items() if k not in bad}})
 
     def agents(self) -> AgentSettings:
         return self.section("agents")

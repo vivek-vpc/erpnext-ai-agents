@@ -1,0 +1,71 @@
+# Golden cases: the optional "explain" button and "Ask why" restate numbered facts in plain words. The model must cite the facts it used, and every figure in its
+# sentences must be in the recorded facts, or the person is told there is not enough information.
+cases:
+  - id: explain-restates-the-facts
+    group: explain
+    note: The model words what the rules already found, and cites the facts by number.
+    entry: explain
+    as: viewer
+    question: What is running low?
+    reply: good
+    llm:
+      - answer:
+          answerable: true
+          answer: Of the 10 items watched, 2 need ordering now. They are Relay 12V and Hydraulic Oil 5L.
+          facts_used: [F1, F2, F3]
+    expect:
+      status: answered
+      outcome: accepted
+      must_include: ["re:\\b2\\b"]
+
+  - id: explain-with-an-invented-figure
+    group: explain
+    note: A figure that is not in the facts is rejected; the person is told there is not enough information, not given the wrong figure.
+    entry: explain
+    as: viewer
+    question: What is running low?
+    reply: bad
+    llm:
+      - answer:
+          answerable: true
+          answer: Of the 10 items watched, 7 need ordering now.
+          facts_used: [F1]
+    expect:
+      rejected_because: ["numbers that are not in the recorded data"]
+      status: rejected
+      outcome: fallback
+      must_include: ["I do not have enough information"]
+      must_not_include: ["7 need"]
+
+  - id: explain-without-citing-a-fact
+    group: explain
+    note: An answer that points at no recorded fact is not accepted, even if it sounds right.
+    entry: explain
+    as: viewer
+    question: What is running low?
+    reply: bad
+    llm:
+      - answer:
+          answerable: true
+          answer: Two items need ordering now.
+          facts_used: []
+    expect:
+      rejected_because: ["did not cite any recorded fact"]
+      status: rejected
+      outcome: fallback
+      must_include: ["I do not have enough information"]
+
+  - id: why-the-model-says-the-facts-do-not-answer
+    group: explain
+    note: When the recorded facts do not contain the answer, the model says so and the person is told that too.
+    entry: why
+    as: viewer
+    approval: {kind: inventory.reorder, item: BOLT-M8}
+    question: Which vendor will deliver this the fastest?
+    reply: good
+    llm:
+      - answer: {answerable: false, answer: "", facts_used: []}
+    expect:
+      status: not_enough_information
+      outcome: declined
+      must_include: ["I do not have enough information"]

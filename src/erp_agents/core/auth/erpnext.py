@@ -26,6 +26,7 @@ from urllib.parse import quote
 
 import requests
 
+from .. import obs
 from ..common import Actor
 
 log = logging.getLogger(__name__)
@@ -129,7 +130,7 @@ class ErpNextLogin:
                  decide: tuple[str, ...] = DEFAULT_DECIDE) -> None:
         self.base = base_url.rstrip("/")
         self.look, self.decide = tuple(look), tuple(decide)
-        self.new_session, self.timeout, self.perm_ttl, self.clock = session_factory, timeout, perm_cache_seconds, clock
+        self.new_session, self.timeout, self.perm_ttl, self.clock = (lambda: obs.observe_session(session_factory(), "erpnext")), timeout, perm_cache_seconds, clock
         self._perms: dict[str, tuple[float, list[dict]]] = {}
 
     # ------------------------------------------------------------------ the two sign-in steps

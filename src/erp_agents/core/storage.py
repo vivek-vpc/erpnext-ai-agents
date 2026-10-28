@@ -22,8 +22,25 @@ log = logging.getLogger(__name__)
 #   - a file with a HIGHER number was made by a newer version of this application: it is refused, untouched (an older version must not guess at tables it does not know);
 #   - a file with a LOWER number is copied aside (`<file>.before-schema-N-<time>`) and then upgraded by MIGRATIONS, one version at a time, each in its own transaction.
 # To change the schema: add the migration as MIGRATIONS[N+1] (a function taking the connection), raise SCHEMA_VERSION to N+1, and add a test (tests/test_operations.py).
-SCHEMA_VERSION = 1
-MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {}
+SCHEMA_VERSION = 2
+JOB_RUNS_DDL = """
+CREATE TABLE IF NOT EXISTS job_runs (
+    job        TEXT PRIMARY KEY,         -- the scheduler's id for the job (approval_maintenance, inventory_check ...)
+    last_start TEXT,                     -- when its last run began (UTC)
+    last_end   TEXT,                     -- when it ended
+    last_ok    INTEGER,                  -- 1 = ended well, 0 = failed
+    last_error TEXT,                     -- the class of the failure, never its text
+    runs       INTEGER NOT NULL DEFAULT 0,
+    failures   INTEGER NOT NULL DEFAULT 0
+)"""
+
+
+def _v2(conn: sqlite3.Connection) -> None:
+    """Version 2: the scheduler remembers when each job last ran and how it ended (core/jobs.py), for /ready, the metrics and `doctor`."""
+    conn.execute(JOB_RUNS_DDL)
+
+
+MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {2: _v2}
 # Columns added to a table after it first shipped (before migrations existed): an existing database gets them when it is opened (CREATE TABLE IF NOT EXISTS does not change a
 # table that is there). Safe to repeat, so it stays as it is.
 ADDED_COLUMNS = (("agent_tasks", "provider", "TEXT"),)
@@ -153,7 +170,7 @@ CREATE TABLE IF NOT EXISTS tool_calls (
     task_id   TEXT,
     error     TEXT
 );
-"""
+""" + JOB_RUNS_DDL + ";\n"
 
 
 class Database:
@@ -165,6 +182,7 @@ class Database:
         self._conn.execute("PRAGMA foreign_keys=ON")
         self._depth = 0
         self._registered: set[str] = set()
+        self._expected: dict[str, int] = {}                  # the version of each pack's tables that this code needs (register_schema)
         try:
             self._check_version()                    # before anything is written: a database from a newer version is left exactly as it is
             if path != ":memory:":
@@ -255,6 +273,26 @@ class Database:
             if row is None:
                 self._conn.execute("INSERT INTO pack_schema(pack, version) VALUES (?, ?)", (owner, version))
             self._registered.add(owner)
+            self._expected[owner] = version
+
+    def schema_status(self) -> list[tuple[str, Optional[int], int]]:
+        """(who, the version in the file, the version this code needs) for the core and for every pack that registered tables: `/ready` says not ready when any differs."""
+        with self._lock:
+            rows = [("core", self.stored_version(), SCHEMA_VERSION)]
+            for owner, needed in sorted(self._expected.items()):
+                row = self._conn.execute("SELECT version FROM pack_schema WHERE pack=?", (owner,)).fetchone()
+                rows.append((owner, int(row["version"]) if row else None, needed))
+            return rows
+
+    def writable(self) -> tuple[bool, str]:
+        """Can this database take a write right now? An empty write transaction takes the write lock exactly as a real one does, and fails the same way on a read-only file,
+        a full disk or a lock held by another process."""
+        try:
+            with self.transaction():
+                pass
+            return True, ""
+        except sqlite3.Error as exc:
+            return False, type(exc).__name__
 
     @contextmanager
     def transaction(self) -> Iterator[None]:

@@ -76,6 +76,30 @@ def weak_key(token: str, min_length: int = MIN_KEY_LENGTH) -> bool:
     return len(token) < min_length or token.lower() in KNOWN_DEFAULT_TOKENS
 
 
+def well_known_key_users(auth_cfg: Optional[dict]) -> list[str]:
+    """The users whose configured access key is one that anybody can read in this project's documentation (never the key itself)."""
+    return [str(t.get("user") or "?") for t in (auth_cfg or {}).get("tokens") or [] if str(t.get("token") or "").strip().lower() in KNOWN_DEFAULT_TOKENS]
+
+
+def demo_key_problem(cfg: dict) -> Optional[str]:
+    """Why the program must not start with this configuration, in words; None when it may. A well-known key is allowed only for a demo: `auth.allow_demo_key: true`
+    (written as a real true) AND the built-in demo ERP. Anything else is refused at start-up (finding F-11, review of 25 Oct 2026)."""
+    auth = cfg.get("auth") or {}
+    users = well_known_key_users(auth)
+    if not users:
+        return None
+    who = ", ".join(sorted(set(users)))
+    if auth.get("allow_demo_key") is not True:
+        return (f"the access key for {who} is a well-known demo key that anybody can read in this project's documentation, so the assistant will not start with it. "
+                f"Set a long random key (at least {MIN_KEY_LENGTH} characters) as ERP_AGENTS_OWNER_TOKEN in .env. "
+                "For a throw-away demo on the built-in demo ERP only, write auth.allow_demo_key: true in the settings file.")
+    erp_type = str((cfg.get("erp") or {}).get("type") or "mock")
+    if erp_type != "mock":
+        return (f"auth.allow_demo_key is accepted only with the built-in demo ERP (erp.type: mock), and this settings file uses erp.type: {erp_type[:20]}, so the assistant "
+                f"will not start with the well-known key for {who}. Set a long random ERP_AGENTS_OWNER_TOKEN in .env and remove allow_demo_key.")
+    return None
+
+
 def clean_for_log(value: Any, limit: int = 80) -> str:
     """Whatever a stranger typed, made safe to write into a log line (no line breaks or control characters that could forge entries)."""
     return re.sub(r"[^\x20-\x7e]", "?", str(value))[:limit]

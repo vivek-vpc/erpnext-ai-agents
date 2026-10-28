@@ -11,6 +11,7 @@ from typing import Any, Optional
 from erp_agents.core.approvals.models import ACTION_DETAILS, ApprovalOption, ApprovalRequest, Section
 from ..settings import ProcurementSettings
 from ..inventory.analysis import _d, _n
+from ..templating import fill_template
 from .scoring import FACTORS, Need, Ranking, ScoredVendor
 
 KIND_PO = "procurement.po"
@@ -49,7 +50,7 @@ def vendor_note_for(wo: dict[str, Any], best: ScoredVendor, need: Need, settings
         "required_by": f"{arrival:%d %b %Y}" if arrival else "the earliest date you can",
         "reference": reference, "vendor": best.name, "unit_price": _money(best.unit_price), "total": _money(best.total),
     }
-    parts = [settings.vendor_note_template.format_map(values).strip()]
+    parts = [fill_template(settings.vendor_note_template, values).strip()]
     if best.arrives_after_stockout and settings.vendor_note_urgent:
         parts.append(settings.vendor_note_urgent.strip())
     if getattr(best, "price_source", None) == "quotation" and getattr(best, "quote_ref", None):

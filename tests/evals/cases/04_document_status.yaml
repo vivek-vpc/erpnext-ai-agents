@@ -1,0 +1,93 @@
+# Golden cases: the state of purchase orders and requisitions. Dates follow the application's own clock (16 Oct 2026), never the machine's.
+cases:
+  - id: documents-none-open
+    group: document_status
+    note: With nothing in the ERP the answer says so.
+    question: What is the status of our open purchase orders?
+    expect:
+      intent: document_status
+      must_include: ["I found no purchase orders"]
+
+  - id: documents-overdue-follows-the-application-clock
+    group: document_status
+    note: An order due in six days is not overdue. Today is the application's date, not the machine's.
+    setup:
+      - open_order: {name: PUR-ORD-2026-00101, item: BOLT-M8, qty: 1000, due_in_days: 6}
+      - open_order: {name: PUR-ORD-2026-00102, item: OIL-5L, qty: 100, due_in_days: -5, received: 20}
+    question: What is the status of our open purchase orders?
+    expect:
+      intent: document_status
+      must_include: ["I found 2 purchase orders", "1 is overdue: PUR-ORD-2026-00102"]
+      must_not_include: ["PUR-ORD-2026-00101 (due"]
+
+  - id: documents-only-the-late-ones
+    group: document_status
+    note: Asking for late orders lists the late ones and not the ones that are on time.
+    setup:
+      - open_order: {name: PUR-ORD-2026-00101, item: BOLT-M8, qty: 1000, due_in_days: 6}
+      - open_order: {name: PUR-ORD-2026-00102, item: OIL-5L, qty: 100, due_in_days: -5, received: 20}
+    question: Which purchase orders are late?
+    expect:
+      intent: document_status
+      must_include: ["I found 1 purchase order", "PUR-ORD-2026-00102"]
+      must_not_include: ["PUR-ORD-2026-00101"]
+
+  - id: documents-nothing-overdue-when-all-are-on-time
+    group: document_status
+    note: The only open order is not due yet, so nothing is overdue.
+    setup:
+      - open_order: {name: PUR-ORD-2026-00101, item: BOLT-M8, qty: 1000, due_in_days: 6}
+    question: any PO overdue?
+    expect:
+      intent: document_status
+      must_include: ["I found no purchase orders with that status"]
+      must_not_include: ["PUR-ORD-2026-00101"]
+
+  - id: documents-one-named-document
+    group: document_status
+    note: A document named in the question is looked up by name.
+    setup:
+      - open_order: {name: PUR-ORD-2026-00102, item: OIL-5L, qty: 100, due_in_days: -5, received: 20}
+    question: What is the status of PUR-ORD-2026-00102
+    expect:
+      intent: document_status
+      must_include: ["PUR-ORD-2026-00102 is a purchase order with Prime Supplies", "100 OIL-5L", "20% has been received", "due 2026-10-11"]
+
+  - id: documents-named-document-does-not-exist
+    group: document_status
+    note: A number that does not exist is not described.
+    question: What is the status of PUR-ORD-2026-00999
+    expect:
+      intent: document_status
+      must_include: ["I could not find PUR-ORD-2026-00999 in ERPNext"]
+      must_not_include: ["is a purchase order"]
+
+  - id: documents-named-requisition-does-not-exist
+    group: document_status
+    note: The same for a requisition number.
+    question: What is the status of MAT-MR-2026-00001
+    expect:
+      intent: document_status
+      must_include: ["I could not find MAT-MR-2026-00001 in ERPNext"]
+
+  - id: documents-draft-order-made-by-the-assistant
+    group: document_status
+    note: A draft the assistant created after a person's Create order is shown as a draft, with who approved it.
+    setup:
+      - decide: {kind: inventory.reorder, item: BOLT-M8, action: approve}
+      - run: procurement
+      - decide: {kind: procurement.po, item: BOLT-M8, action: approve}
+    question: show draft purchase orders
+    expect:
+      intent: document_status
+      must_include: ["PO-MOCK-0001", "draft (not submitted)", "1,256 BOLT-M8"]
+
+  - id: documents-for-one-item
+    group: document_status
+    note: Orders for one material are listed with that material's quantities.
+    setup:
+      - open_order: {name: PUR-ORD-2026-00102, item: OIL-5L, qty: 100, due_in_days: -5, received: 20}
+    question: purchase orders for OIL-5L
+    expect:
+      intent: document_status
+      must_include: ["I found 1 purchase order for Hydraulic Oil 5L", "PUR-ORD-2026-00102"]

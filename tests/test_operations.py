@@ -67,15 +67,17 @@ def test_a_database_from_a_newer_version_is_refused_and_left_exactly_as_it_is(tm
 
 def test_an_older_database_is_copied_aside_and_then_upgraded_in_order(tmp_path, monkeypatch):
     path = fresh(tmp_path, rows=2)
+    now = storage.SCHEMA_VERSION                                                                          # two versions newer than the file, whatever the real one is
     steps = []
-    monkeypatch.setattr(storage, "SCHEMA_VERSION", 3)
-    monkeypatch.setattr(storage, "MIGRATIONS", {2: lambda conn: (steps.append(2), conn.execute("CREATE TABLE added_in_2 (x)")), 3: lambda conn: (steps.append(3), conn.execute("CREATE TABLE added_in_3 (x)"))})
+    monkeypatch.setattr(storage, "SCHEMA_VERSION", now + 2)
+    monkeypatch.setattr(storage, "MIGRATIONS", {now + 1: lambda conn: (steps.append(now + 1), conn.execute("CREATE TABLE added_first (x)")),
+                                                now + 2: lambda conn: (steps.append(now + 2), conn.execute("CREATE TABLE added_second (x)"))})
     Database(path).close()
-    assert steps == [2, 3] and version_in(path) == 3
-    (copy,) = [p for p in tmp_path.iterdir() if ".before-schema-1-" in p.name]
-    assert version_in(str(copy)) == 1 and rows_in(str(copy)) == 2                                        # the copy is the old database, complete
+    assert steps == [now + 1, now + 2] and version_in(path) == now + 2
+    (copy,) = [p for p in tmp_path.iterdir() if f".before-schema-{now}-" in p.name]
+    assert version_in(str(copy)) == now and rows_in(str(copy)) == 2                                      # the copy is the old database, complete
     c = sqlite3.connect(path)
-    assert {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")} >= {"added_in_2", "added_in_3"}
+    assert {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")} >= {"added_first", "added_second"}
     c.close()
 
 
@@ -85,11 +87,12 @@ def test_a_migration_that_fails_changes_nothing_and_says_where_the_copy_is(tmp_p
     def broken(conn):
         conn.execute("CREATE TABLE half_done (x)")
         raise RuntimeError("boom")
-    monkeypatch.setattr(storage, "SCHEMA_VERSION", 2)
-    monkeypatch.setattr(storage, "MIGRATIONS", {2: broken})
-    with pytest.raises(SchemaError, match="version 2 failed.*Nothing was changed.*before-schema-1-"):
+    now = storage.SCHEMA_VERSION
+    monkeypatch.setattr(storage, "SCHEMA_VERSION", now + 1)
+    monkeypatch.setattr(storage, "MIGRATIONS", {now + 1: broken})
+    with pytest.raises(SchemaError, match=f"version {now + 1} failed.*Nothing was changed.*before-schema-{now}-"):
         Database(path)
-    assert version_in(path) == 1 and rows_in(path) == 2
+    assert version_in(path) == now and rows_in(path) == 2
     c = sqlite3.connect(path)
     assert not c.execute("SELECT 1 FROM sqlite_master WHERE name='half_done'").fetchone()                 # rolled back
     c.close()
@@ -97,11 +100,12 @@ def test_a_migration_that_fails_changes_nothing_and_says_where_the_copy_is(tmp_p
 
 def test_a_missing_migration_is_refused_before_anything_is_touched(tmp_path, monkeypatch):
     path = fresh(tmp_path)
-    monkeypatch.setattr(storage, "SCHEMA_VERSION", 2)
+    now = storage.SCHEMA_VERSION
+    monkeypatch.setattr(storage, "SCHEMA_VERSION", now + 1)
     monkeypatch.setattr(storage, "MIGRATIONS", {})
     with pytest.raises(SchemaError, match="no migration for version"):
         Database(path)
-    assert version_in(path) == 1 and not [p for p in tmp_path.iterdir() if "before-schema" in p.name]
+    assert version_in(path) == now and not [p for p in tmp_path.iterdir() if "before-schema" in p.name]
 
 
 def test_the_current_version_needs_no_copy_and_an_in_memory_database_makes_none(tmp_path):

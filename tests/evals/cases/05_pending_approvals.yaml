@@ -1,0 +1,48 @@
+# Golden cases: "what is waiting for my OK?" Only a person who may approve sees the requests; a viewer is told so and sees none.
+cases:
+  - id: approvals-waiting
+    group: pending_approvals
+    note: The morning's reorder suggestions are waiting.
+    question: What is waiting for my OK?
+    expect:
+      intent: pending_approvals
+      source: data
+      must_include: ["6 requests are waiting for your OK: 6 reorders"]
+
+  - id: approvals-nothing-waiting
+    group: pending_approvals
+    note: Before the morning run there is nothing to answer.
+    world: quiet
+    question: What is waiting for my OK?
+    expect:
+      intent: pending_approvals
+      must_include: ["Nothing is waiting for your OK right now."]
+
+  - id: approvals-one-less-after-an-answer
+    group: pending_approvals
+    note: A request that has been answered is no longer waiting.
+    setup:
+      - decide: {kind: inventory.reorder, item: BOLT-M8, action: dismiss}
+    question: What is waiting for my OK?
+    expect:
+      intent: pending_approvals
+      must_include: ["5 requests are waiting for your OK: 5 reorders"]
+
+  - id: approvals-hidden-from-a-viewer
+    group: pending_approvals
+    note: A viewer is told they may not see the requests, and none is listed.
+    as: viewer
+    question: What is waiting for my OK?
+    expect:
+      intent: pending_approvals
+      must_include: ["Only people who can approve orders in ERPNext can see the requests"]
+      must_not_include: ["reorder", "Relay 12V", "BOLT-M8"]
+
+  - id: approvals-asked-another-way
+    group: pending_approvals
+    note: Another wording, and still hidden from a viewer.
+    as: viewer
+    question: do I have approvals pending
+    expect:
+      intent: pending_approvals
+      must_include: ["Only people who can approve orders"]

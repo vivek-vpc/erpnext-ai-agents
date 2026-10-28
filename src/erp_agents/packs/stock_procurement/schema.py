@@ -1,6 +1,6 @@
 """The tables of the stock pack: alerts and stock notices, purchase proposals, the "Ask why" answer cache, the chat log and the run log of the two agents; and (version 2)
-the purchasing follow-up: messages to vendors and their replies, delivery chases, goods receipt checks, quote rounds, and the stock count plan; and (version 3) the
-requests to move stock between warehouses.
+the purchasing follow-up: messages to vendors and their replies, delivery chases, goods receipt checks, quote rounds, and the stock count plan; (version 3) the
+requests to move stock between warehouses; and (version 4) the keyed hash, the reply window and the reply limits of the vendor tables.
 
 The core creates its own tables; this pack registers these with `Database.register_schema` (the pack's version is kept apart in `pack_schema`). Every repository and service of
 the pack calls `ensure_schema(db)` when it is built, so a database made before packs existed, which already has these tables, just gets its version row.
@@ -12,7 +12,7 @@ import sqlite3
 from typing import Callable
 
 NAME = "stock_procurement"
-VERSION = 3
+VERSION = 4
 
 
 def _v2(conn: sqlite3.Connection) -> None:
@@ -23,7 +23,17 @@ def _v3(conn: sqlite3.Connection) -> None:
     """Version 3 only adds a table (stock_transfers): nothing in the old ones changes."""
 
 
-MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {2: _v2, 3: _v3}
+def _v4(conn: sqlite3.Connection) -> None:
+    """Version 4 adds columns to the two vendor tables (the keyed hash, the reply window that closes, the limits on replies). SCHEMA below makes them for a new database; here
+    they are added to an old one, and the rows already there keep their values (an old hash stays an old, unkeyed hash: hash_kind stays empty)."""
+    for table, column, ddl in (("vendor_messages", "hash_kind", "TEXT"), ("vendor_messages", "closed_at", "TEXT"),
+                               ("vendor_replies", "relayed", "INTEGER NOT NULL DEFAULT 0"), ("vendor_replies", "text_hash", "TEXT")):
+        have = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+        if have and column not in have:              # no table at all (a database older than version 2): SCHEMA creates it with the column
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+
+
+MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {2: _v2, 3: _v3, 4: _v4}
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS alerts (
@@ -116,12 +126,14 @@ CREATE TABLE IF NOT EXISTS vendor_messages (
     ref_id        TEXT NOT NULL,         -- the purchase order chased, or the quote round
     supplier      TEXT NOT NULL,
     channel       TEXT NOT NULL,         -- email | whatsapp
-    address_hash  TEXT,                  -- one-way hash of the vendor's number or address, to recognise a reply; no contact data is stored
+    address_hash  TEXT,                  -- keyed hash (HMAC-SHA256) of the vendor's number or address, to recognise a reply; no contact data is stored; erased when the reply window ends
     status        TEXT NOT NULL,         -- sent | failed
     error         TEXT,
     approval_id   TEXT,
     sent_by       TEXT,
-    sent_at       TEXT NOT NULL
+    sent_at       TEXT NOT NULL,
+    hash_kind     TEXT,                  -- version 4: 'hmac1' = keyed; empty with a hash = the unkeyed SHA-256 of versions 1 to 3, kept only until its window ends
+    closed_at     TEXT                   -- version 4: when the order was received or the price round ended; a reply after this is not taken
 );
 CREATE INDEX IF NOT EXISTS idx_vendor_messages_ref ON vendor_messages(purpose, ref_id);
 CREATE INDEX IF NOT EXISTS idx_vendor_messages_hash ON vendor_messages(address_hash);
@@ -134,7 +146,9 @@ CREATE TABLE IF NOT EXISTS vendor_replies (
     ref_id       TEXT NOT NULL,
     channel      TEXT NOT NULL,
     text         TEXT NOT NULL,          -- what the vendor wrote (cleaned and capped); never given to a language model
-    received_at  TEXT NOT NULL
+    received_at  TEXT NOT NULL,
+    relayed      INTEGER NOT NULL DEFAULT 0,   -- version 4: 1 = passed on to the people who answered the request, 2 = the 'more replies' line, 0 = kept only
+    text_hash    TEXT                    -- version 4: SHA-256 of the text without case and spacing, to drop an identical reply
 );
 
 CREATE TABLE IF NOT EXISTS delivery_chases (

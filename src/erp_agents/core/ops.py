@@ -25,6 +25,7 @@ from .storage import SCHEMA, SCHEMA_VERSION
 # Tables that are made when the file is opened, so a complete database (or backup) from a version before them simply does not have them yet:
 # pack_schema, and audit_chain (the decision history's seal: it seals the older decisions on the first start).
 MADE_ON_OPEN = ("pack_schema", "audit_chain")
+TABLE_SINCE = {"job_runs": 2}                         # tables that came with a later schema version: a file of an earlier version does not have them, and is not damaged for that
 REQUIRED_TABLES = tuple(t for t in dict.fromkeys(re.findall(r"CREATE TABLE IF NOT EXISTS (\w+)", SCHEMA)) if t not in MADE_ON_OPEN)
 
 
@@ -135,12 +136,13 @@ def verify_database(path: str, live: bool = False) -> Verdict:
             v.problems.append("SQLite found damage: " + "; ".join(result[:3]))
         names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         v.tables = len(names)
-        missing = [t for t in REQUIRED_TABLES if t not in names]
-        if missing:
-            v.problems.append("tables are missing: " + ", ".join(missing[:6]) + (" ..." if len(missing) > 6 else ""))
         if "schema_info" in names:
             row = conn.execute("SELECT version FROM schema_info").fetchone()
             v.version = int(row[0]) if row else None
+        # a table that a later schema version added is not missing from a file of an earlier version: the upgrade makes it
+        missing = [t for t in REQUIRED_TABLES if t not in names and TABLE_SINCE.get(t, 1) <= (v.version or SCHEMA_VERSION)]
+        if missing:
+            v.problems.append("tables are missing: " + ", ".join(missing[:6]) + (" ..." if len(missing) > 6 else ""))
         if v.version is None:
             v.problems.append("it carries no schema version")
         elif v.version > SCHEMA_VERSION:
