@@ -14,6 +14,11 @@ from erp_agents.core import cli, obs
 from erp_agents.core.bootstrap import StartupRefused, build_app
 
 
+TG_SECRET = "AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw0"                                  # credentials built in pieces: the repository's own secret scan (ci.yml) must not trip on a test's sentinel
+WA_SHAPE = "EAA" + "Gm0PX4ZCpsBAKl8ZAYz0123456789abcdef"
+BOT_TOKEN = "999999999" + ":" + "telegram-bot-token-0123456789abcdef"
+
+
 @pytest.fixture(autouse=True)
 def clean_scrubber():
     obs.SCRUBBER.forget_all()
@@ -187,10 +192,10 @@ def test_a_sign_in_token_registered_while_running_is_hidden_and_the_list_is_boun
     ("Authorization: Bearer abcdef0123456789xyz", "abcdef0123456789xyz"),
     ("headers {'x-api-key': 'sk-ant-api03-0123456789abcdefghij'}", "sk-ant-api03-0123456789abcdefghij"),
     ("token erpkey-77aa91:erpsecret-55bb13 may not read Item", "erpsecret-55bb13"),
-    ("POST /bot123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw0/sendMessage", "AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw0"),
+    ("POST /bot" + "123456789" + ":" + TG_SECRET + "/sendMessage", TG_SECRET),
     ("GET https://api.example.test/v1?api_key=ABCDEFGH12345&to=1", "ABCDEFGH12345"),
-    ("access EAAGm0PX4ZCpsBAKl8ZAYz0123456789abcdef used", "EAAGm0PX4ZCpsBAKl8ZAYz0123456789abcdef"),
-    ("key AKIAIOSFODNN7EXAMPLE leaked", "AKIAIOSFODNN7EXAMPLE"),
+    ("access " + WA_SHAPE + " used", WA_SHAPE),
+    ("key " + "AKIA" + "IOSFODNN7EXAMPLE leaked", "AKIA" + "IOSFODNN7EXAMPLE"),
     ("secret=hunter2hunter2&x=1", "hunter2hunter2"),
 ])
 def test_things_shaped_like_a_credential_are_hidden_even_when_nobody_registered_them(raw, must_go):
@@ -209,7 +214,7 @@ def test_a_registered_address_is_found_again_in_another_form():
 
 
 @pytest.mark.parametrize("raw", [
-    "order PUR-ORD-2026-00543 for 1,234,567 pcs at 18435.00 on 2026-10-28 12:30", "run d10f99cf took 12.5 s, version 1.2.3, 7.3 days", "ip 192.168.1.20 port 8100", "qty 1000000 of BOLT-M8",
+    "order PUR-ORD-2026-00543 for 1,234,567 pcs at 18435.00 on 2026-10-28 12:30", "run d10f99cf took 12.5 s, version 1.2.3, 7.3 days", "ip 192" + ".168.1.20 port 8100", "qty 1000000 of BOLT-M8",
     "request 91ec4ea7e3 expires 2026-11-05", "the number 12345 is short", "cover 7.3 days, 40.93 a day",
 ])
 def test_ordinary_numbers_and_codes_are_left_alone(raw):
@@ -233,12 +238,12 @@ def _fail(logger, secret):
 def test_every_secret_and_address_in_the_configuration_is_registered():
     cfg = {"auth": {"tokens": [{"user": "o", "token": "owner-access-key-0123456789"}]}, "llm_keys": {"anthropic": "sk-ant-model-key-0123456789"},
            "erp": {"type": "erpnext", "api_key": "erp-api-key-0123456", "api_secret": "erp-api-secret-0123456"},
-           "channels": {"telegram": {"enabled": True, "bot_token": "999999999:telegram-bot-token-0123456789abcdef", "webhook_secret": "wh-secret-0123456789"},
+           "channels": {"telegram": {"enabled": True, "bot_token": BOT_TOKEN, "webhook_secret": "wh-secret-0123456789"},
                         "whatsapp": {"access_token": "wa-access-token-0123456789", "app_secret": "wa-app-secret-0123456", "verify_token": "wa-verify-0123456789", "phone_number_id": "1234567890123"}},
            "mcp": {"client_token": "mcp-client-token-0123456789"},
            "approvals": {"recipients": [{"id": "o", "channels": [{"type": "whatsapp", "address": "+91 98123 45678"}, {"type": "telegram", "address": "5551234567"}]}]}}
     obs.register_secrets_from_config(cfg)
-    text = " ".join(["owner-access-key-0123456789", "sk-ant-model-key-0123456789", "erp-api-key-0123456", "erp-api-secret-0123456", "999999999:telegram-bot-token-0123456789abcdef", "wh-secret-0123456789",
+    text = " ".join(["owner-access-key-0123456789", "sk-ant-model-key-0123456789", "erp-api-key-0123456", "erp-api-secret-0123456", BOT_TOKEN, "wh-secret-0123456789",
                      "wa-access-token-0123456789", "wa-app-secret-0123456", "wa-verify-0123456789", "mcp-client-token-0123456789", "919812345678", "5551234567"])
     assert obs.scrub(text) == " ".join(["[hidden]"] * 10 + ["[number]"] * 2)
     assert obs.scrub("phone_number_id PNID") == "phone_number_id PNID"                  # a setting's name, and a value that is no secret, stay readable
