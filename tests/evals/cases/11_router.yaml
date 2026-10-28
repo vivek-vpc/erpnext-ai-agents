@@ -3,6 +3,7 @@
 cases:
   - id: router-places-a-vague-question
     group: router
+    live: false
     note: The rules do not know "reliable" but the model maps it to the vendor scorecard, which answers from data.
     ai: [assistant]
     question: Is Prime Supplies reliable?

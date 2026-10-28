@@ -144,6 +144,11 @@ class Case(BaseModel):
         return ["assistant", "agents"] if self.llm else []
 
     @property
+    def runs_live(self) -> bool:
+        """Does the case mean anything against a real model? Not when its point is the scripted reply (a model that invents a number), nor when no model is involved."""
+        return self.live and self.reply != "bad" and bool(self.ai_sections)
+
+    @property
     def wants_outcome(self) -> str:
         return self.expect.outcome or ("accepted" if self.llm else "none")
 

@@ -87,6 +87,8 @@ def run_case(case: Case, clients: Optional[tuple[Any, Any]] = None) -> Result:
         tool_llm, text_llm = ScriptedToolLLM(script), ScriptedTextLLM(script)
     for section in sections:
         app.settings.update_section(OWNER, section, {"enabled": True})
+    if clients is not None and getattr(tool_llm, "remote", False):
+        app.settings.update_section(OWNER, "agents", {"allow_remote": True})            # choosing a model on another machine or a hosted one on the command line is the consent
     app.agents.client_factory = lambda cfg: tool_llm
     app.chat.client_factory = lambda cfg: text_llm
     app.assistant.client_factory = lambda cfg: text_llm

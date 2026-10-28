@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .runner import Result
+
 
 def markdown(summary: dict[str, Any], problems: list[str], title: str = "AI evaluation (deterministic, no model, no ERPNext)") -> str:
     m, b, g = summary["model"], summary["bad_replies"], summary["good_replies"]
@@ -41,4 +43,17 @@ def comparison(rows: list[tuple[str, dict[str, Any]]]) -> str:
     out.append(line("Unreachable", lambda s: s["model"]["unavailable"]))
     out.append(line("Tokens (in / out)", lambda s: f"{s['model']['tokens_in']:,} / {s['model']['tokens_out']:,}"))
     out.append(line("Model time", lambda s: f"{s['model']['seconds']:.0f} s"))
+    return "\n".join(out) + "\n"
+
+
+def case_table(rows: list[tuple[str, list[Result]]]) -> str:
+    """Which model got which case right: one row per case, one column per model, with what the checks did with its reply."""
+    labels = [label for label, _ in rows]
+    out = ["## Case by case", "", "| Case | " + " | ".join(labels) + " |", "|---|" + "---|" * len(labels)]
+    for i, first in enumerate(rows[0][1]):
+        cells = []
+        for _, results in rows:
+            r = results[i]
+            cells.append(("right" if r.passed else "**WRONG**") + f" ({r.observed.outcome}, {r.observed.seconds:.0f} s)")
+        out.append(f"| {first.case.id} | " + " | ".join(cells) + " |")
     return "\n".join(out) + "\n"

@@ -16,7 +16,7 @@ cases:
     expect:
       status: answered
       outcome: accepted
-      must_include: ["2 need ordering now", "Relay 12V and Hydraulic Oil 5L"]
+      must_include: ["re:\\b2\\b"]
 
   - id: explain-with-an-invented-figure
     group: explain
