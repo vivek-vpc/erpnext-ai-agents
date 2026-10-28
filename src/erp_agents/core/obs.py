@@ -19,6 +19,7 @@ import os
 import re
 import sys
 import threading
+import time
 import traceback
 import uuid
 from collections import deque
@@ -26,8 +27,8 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Iterator, Optional, TextIO
-from urllib.parse import quote
+from typing import Any, Callable, Iterator, Optional, TextIO
+from urllib.parse import quote, unquote, urlsplit
 
 LOG_FORMATS = ("text", "json")
 LOG_FORMAT_ENV = "ERP_AGENTS_LOG_FORMAT"
@@ -314,6 +315,48 @@ def log_format_from(requested: Optional[str], configured: Optional[str] = None) 
 def _plain(value: Any) -> str:
     text = " ".join(str(value).split())
     return text if text and " " not in text else json.dumps(text)
+
+
+HTTP_HOOKS: list[Callable[..., None]] = []             # called after every observed request: hook(target, kind, method, status, seconds, error, headers); metrics.py adds itself here
+
+
+def _kind_of(method: str, url: str) -> str:
+    """What was asked, in a bounded vocabulary: the ERPNext document type or method name, else the first two parts of the path. Never the query string."""
+    parts = [unquote(p) for p in urlsplit(str(url)).path.split("/") if p]
+    if len(parts) >= 3 and parts[0] == "api" and parts[1] in ("resource", "method"):
+        return f"{'resource' if parts[1] == 'resource' else 'method'}:{parts[2]}"[:80]
+    return ("/" + "/".join(parts[:2]))[:80]
+
+
+def observe_session(session: Any, target: str) -> Any:
+    """Time every request made through this `requests` session and write one line about it (method, what was asked, status, milliseconds) with the ids that are bound.
+    The session object is changed in place and returned: its `get`/`post`/... all go through `request`. A session that has no `request` method (a test double) is returned as it is."""
+    original = getattr(session, "request", None)
+    if not callable(original) or getattr(session, "_erp_agents_observed", False):
+        return session
+
+    def request(method: str, url: str, *args: Any, **kwargs: Any) -> Any:
+        started, kind, verb = time.monotonic(), _kind_of(method, url), str(method).upper()
+        try:
+            response = original(method, url, *args, **kwargs)
+        except BaseException as exc:
+            _http_seen(target, kind, verb, None, time.monotonic() - started, type(exc).__name__, None)
+            raise
+        _http_seen(target, kind, verb, getattr(response, "status_code", None), time.monotonic() - started, None, getattr(response, "headers", None))
+        return response
+    session.request = request
+    session._erp_agents_observed = True
+    return session
+
+
+def _http_seen(target: str, kind: str, method: str, status: Optional[int], seconds: float, error: Optional[str], headers: Any) -> None:
+    bad = error is not None or (status is not None and status >= 500)
+    event(f"{target}_request", logging.WARNING if bad else logging.INFO, method=method, kind=kind, status=status, ms=int(seconds * 1000), error=error)
+    for hook in HTTP_HOOKS:
+        try:
+            hook(target, kind, method, status, seconds, error, headers)
+        except Exception:  # noqa: BLE001 - watching must never break the call it watches
+            logging.getLogger(__name__).debug("an observer of the %s call failed", target, exc_info=True)
 
 
 def event(name: str, level: int = logging.INFO, **fields: Any) -> None:

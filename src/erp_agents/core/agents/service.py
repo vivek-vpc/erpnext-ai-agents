@@ -9,6 +9,7 @@ With the agents switched off nothing is sent to any model; the brief and the ord
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import logging
 import socket
 import threading
@@ -19,6 +20,7 @@ from zoneinfo import ZoneInfo
 
 from pydantic import ValidationError
 
+from .. import obs
 from ..common import Actor
 from ..netguard import blocked_target
 from ..policy import AGENT_PROVIDERS, PROVIDER_LABELS, PROVIDER_MODELS, PROVIDER_URLS, AgentSettings
@@ -179,7 +181,8 @@ class AgentService:
     def submit(self, plan: Plan) -> str:
         """Start the plan in the background; the caller polls `task(id)`."""
         task_id = self._start(plan)
-        threading.Thread(target=self._complete, args=(task_id, plan, 1800), name=f"agent-{plan.job.agent}-{plan.job.task}", daemon=True).start()
+        context = contextvars.copy_context()                # a new thread starts with an empty context; the task binds its own id, and whatever else is bound (a request id) is kept
+        threading.Thread(target=context.run, args=(self._complete, task_id, plan, 1800), name=f"agent-{plan.job.agent}-{plan.job.task}", daemon=True).start()
         return task_id
 
     def task(self, task_id: str) -> Optional[dict[str, Any]]:
@@ -199,6 +202,12 @@ class AgentService:
         return bool(cfg.monthly_token_limit and self.log.tokens_since(month_start(self.app.clock()), hosted_only=True) >= cfg.monthly_token_limit)
 
     def _complete(self, task_id: str, plan: Plan, wait: float) -> dict[str, Any]:
+        """Run the task and record it. Everything logged from here on, in this thread and in the ones it starts (the tool calls, the model calls, the ERPNext requests), carries the task's id."""
+        with obs.bind(task_id=task_id):
+            obs.event("agent_task_start", agent=plan.job.agent, task=plan.job.task)
+            return self._complete_bound(task_id, plan, wait)
+
+    def _complete_bound(self, task_id: str, plan: Plan, wait: float) -> dict[str, Any]:
         cfg = self.settings
         outcome = Outcome()
         client: Optional[ToolChatClient] = None
@@ -240,6 +249,8 @@ class AgentService:
         if outcome.prompt_tokens or outcome.output_tokens:                       # kept with the result, so whoever polls the task can show what it cost
             stored["tokens"] = token_summary(outcome.prompt_tokens, outcome.output_tokens, cfg, hosted)
         self.log.finish_task(task_id, status, stored, note, outcome.steps, outcome.tool_calls, outcome.llm_seconds, outcome.prompt_tokens, outcome.output_tokens, outcome.trace)
+        obs.event("agent_task", logging.INFO if status == "ok" else logging.WARNING, agent=plan.job.agent, task=plan.job.task, status=status, source=source, steps=outcome.steps,
+                  tool_calls=outcome.tool_calls, llm_seconds=round(outcome.llm_seconds, 1), tokens_in=outcome.prompt_tokens, tokens_out=outcome.output_tokens)
         out = {"task_id": task_id, "status": status, "source": source, "model": (client.model if client is not None else self.describe()["model"]) if source == "model" else None, "note": note,
                "seconds": round(outcome.llm_seconds, 1), "provider": self.describe()["provider"], "hosted": hosted, **result}
         if outcome.prompt_tokens or outcome.output_tokens:

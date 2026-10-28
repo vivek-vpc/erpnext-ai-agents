@@ -14,11 +14,13 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
 import anyio
 
+from .. import obs
 from ..assistant.verify import HEDGES, _contains, numbers
 from .llm import LLMError, Reply, ToolChatClient, salvage_tool_call
 
@@ -226,7 +228,14 @@ class AgentRuntime:
     # ------------------------------------------------------------------------------------------------ pieces
     async def _chat(self, out: Outcome, messages: list[dict[str, Any]], kind: str, tools: Optional[list[dict[str, Any]]] = None, schema: Optional[dict[str, Any]] = None) -> Reply:
         out.steps += 1
-        reply = await anyio.to_thread.run_sync(lambda: self.llm.chat(messages, tools, schema))
+        started = time.monotonic()
+        who = {"provider": getattr(self.llm, "provider", None), "model": getattr(self.llm, "model", None), "kind": kind}
+        try:
+            reply = await anyio.to_thread.run_sync(lambda: self.llm.chat(messages, tools, schema))
+        except LLMError as exc:                                          # the model could not be reached or did not reply: one line, the class of the failure, not its text
+            obs.event("llm_call", logging.WARNING, **who, ms=int((time.monotonic() - started) * 1000), outcome="error", error=type(exc).__name__)
+            raise
+        obs.event("llm_call", **who, ms=int((time.monotonic() - started) * 1000), tokens_in=reply.prompt_tokens, tokens_out=reply.output_tokens, outcome="ok")
         out.timings.append({"step": out.steps, "kind": kind, "seconds": round(reply.seconds, 1), "load": round(reply.load_seconds, 1), "reading_prompt": round(reply.prompt_seconds, 1),
                             "writing": round(reply.generate_seconds, 1), "prompt_tokens": reply.prompt_tokens, "output_tokens": reply.output_tokens})
         out.llm_seconds += reply.seconds

@@ -27,6 +27,7 @@ from ..acting import acting_as
 from ..bootstrap import App
 from ..common import Actor
 from ..settings_store import SettingsError
+from .observability import RequestContext
 from .hardening import MIN_KEY_LENGTH, BodyLimit, RemoteAccess, SecurityHeaders, access_key_mode, clean_for_log, console_policy, is_local_request, script_hash, weak_key
 
 log = logging.getLogger(__name__)
@@ -470,4 +471,5 @@ def create_app(app_ctx: App, on_system_change=None, lifespan=None) -> FastAPI:
     api.add_middleware(BodyLimit)
     api.add_middleware(RemoteAccess, mode=lambda: str((ctx.config.get("server") or {}).get("remote_access", "full")).lower())
     api.add_middleware(SecurityHeaders, console_csp=console_policy(script_hash(web_dir / "index.html") if web_dir is not None else None))
+    api.add_middleware(RequestContext)                         # outermost: the request id is bound for everything inside, and returned in X-Request-ID
     return api
