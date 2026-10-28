@@ -30,6 +30,16 @@ def _app(args) -> App:
     return build_app(config=load_config(args.config))
 
 
+def _log_format(args, cfg: dict) -> str:
+    """The log format `serve` starts with: the flag, then the environment, then `observability.log_format` in the settings file, else text."""
+    section = cfg.get("observability")
+    configured = section.get("log_format") if isinstance(section, dict) else None
+    try:
+        return obs.log_format_from(args.log_format, str(configured) if configured else None)
+    except ValueError:                                  # a wrong value in the settings file: build_app refuses to start and says which one, in words
+        return obs.log_format_from(args.log_format)
+
+
 def pack_app(args, name: str) -> Optional[App]:
     """For a command a pack adds: build the application, or say plainly (and return None) when that pack is switched off."""
     app = _app(args)
@@ -377,10 +387,18 @@ def cmd_serve(args) -> int:
 
 
 def _serve(args, create_app, uvicorn, asynccontextmanager, AgentScheduler) -> int:
-    app = _app(args)
-    fmt = obs.log_format_from(args.log_format, app.observability.log_format)         # the flag and the environment win over the settings file
-    if fmt != obs.log_format_from(args.log_format):
+    cfg = load_config(args.config)
+    fmt = _log_format(args, cfg)                        # the flag and the environment win over the settings file
+    if fmt != obs.log_format_from(args.log_format):     # only the settings file asks for it: switch before the application is built, so that not even its first line is plain text
         obs.configure_logging(logging.DEBUG if args.verbose_log else logging.INFO, fmt)
+    app = build_app(config=cfg)
+
+    def say(text: str, level: int = logging.INFO) -> None:
+        """A notice for whoever starts the program: printed as it always was or, in the JSON format, one JSON line like every other, so that a log collector can read all of the output."""
+        if fmt == "json":
+            logging.getLogger("erp_agents.cli").log(level, text)
+        else:
+            print(text)
     scheduler = AgentScheduler(app)
     app.scheduler = scheduler                           # so that /ready can see whether it is running
 
@@ -396,13 +414,13 @@ def _serve(args, create_app, uvicorn, asynccontextmanager, AgentScheduler) -> in
     srv = app.config.get("server", {})
     host = args.host or srv.get("host", "127.0.0.1")
     mode = str(srv.get("remote_access", "full")).lower()
-    print(f"Remote access: {'only the channel webhooks are reachable through a tunnel or proxy' if mode == 'webhooks_only' else 'the console and API are reachable through a tunnel or proxy (server.remote_access: webhooks_only closes them)'}.")
+    say(f"Remote access: {'only the channel webhooks are reachable through a tunnel or proxy' if mode == 'webhooks_only' else 'the console and API are reachable through a tunnel or proxy (server.remote_access: webhooks_only closes them)'}.")
     from .api.hardening import access_key_warning
     warning = access_key_warning(app.config.get("auth"), bool(app.tokens))
     if warning:
-        print(warning)
+        say(warning, logging.WARNING)
     if host not in ("127.0.0.1", "::1", "localhost"):
-        print(f"WARNING: listening on {host}, not only on this machine. Anybody who can reach that address can reach the sign-in page.")
+        say(f"WARNING: listening on {host}, not only on this machine. Anybody who can reach that address can reach the sign-in page.", logging.WARNING)
     # in the JSON format uvicorn's own lines (start-up, access) go through our handler too, so every line is one JSON object; in the text format it keeps its usual look
     uvicorn.run(api, host=host, port=args.port or int(srv.get("port", 8100)), log_level="info", server_header=False, **({"log_config": None} if fmt == "json" else {}))
     return 0
