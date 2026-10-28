@@ -265,5 +265,7 @@ def test_nothing_personal_is_a_label_or_a_value(make_app, clock):
     text = TestClient(create_app(app)).get("/metrics", headers=bearer(KEYS["owner"])).text
     samples = "\n".join(l for l in text.splitlines() if not l.startswith("#"))                    # the series themselves, not the help text
     assert samples.count("\n") > 20
-    for private in ("BOLT-M8", "Prime Supplies", "owner", "asked by", KEYS["owner"], KEYS["viewer"], "500"):
+    for private in ("BOLT-M8", "Prime Supplies", "owner", "asked by", KEYS["owner"], KEYS["viewer"]):
         assert private not in samples, private
+    series = parse(text)[1]                                                                       # the quantity asked about (500) as a number and in a label, not as digits anywhere in
+    assert 500.0 not in series.values() and not [v for labels in (k[1] for k in series) for _, v in labels if "500" in v]   # the text: a latency sum can contain them by chance
