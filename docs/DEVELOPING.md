@@ -106,6 +106,8 @@ These are the checks a pack cannot opt out of, because they live in the core and
 15. **An ERP read that a connection may not offer is optional.** The follow-up reads (receipts, open sales orders, supplier contacts, item alternatives, stock counts, stock values, e-mail through the ERP) are a separate protocol, `FollowUpERP` in `core/erp/base.py`, called through `getattr`; a feature whose read is missing says so instead of guessing, and an older or smaller ERP client keeps working.
 16. **A pack depends only on the core.** It declares its tools, approvals, settings and ERPNext roles in its manifest, keeps its tests in its own folder, and never imports another pack. The core never imports a pack. See "How to add a pack" below.
 
+17. **What someone may need to follow is visible, and nothing private is in it.** A new log line about what the assistant did goes through `obs.event` (names, numbers, outcomes: never a question, an answer, a prompt, a document or a person); a new metric is registered in `core/metrics.py` with a bounded set of label values; a new span is `tracing.span` with names and counts; a new scheduled job is registered through `scheduler.tracked` and returns `False` when it failed. Never log a secret on the assumption that the scrubber will catch it. These modules import no web or scheduler library. The tables in [OBSERVABILITY.md](OBSERVABILITY.md) are compared with the code by a test (`tests/test_obs_docs.py`), so a metric, event or span that is not documented fails the build.
+
 ## Audit (21 Oct 2026): where the rules are not met yet
 
 (Paths are as of the restructure of 25 Oct 2026: the stock files are under `packs/stock_procurement/`, the shared ones under `core/`. Nothing in the audit changed with the move.)
