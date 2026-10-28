@@ -4,7 +4,8 @@ A message to a vendor is sent only from the handler of a request a person answer
 in the ERP at the moment of sending (`FollowUpERP.get_supplier_contact`) and is used for that one message:
 
   * it is never put into an approval request, a tool result, a log line or a language model's input;
-  * the database keeps only a one-way hash of it, so a WhatsApp reply from that number can be matched to the message it answers;
+  * the database keeps only a keyed hash of it (HMAC-SHA256, the key is in the environment), so a WhatsApp reply from that number can be matched to the message it answers
+    until the order is received or the price round ends, or the reply window runs out; then the hash is erased;
   * e-mail goes through the ERP's own outgoing mail account (recorded on the document there), WhatsApp through the configured WhatsApp channel.
 
 A vendor's reply is untrusted text: it is cleaned, capped, stored, and passed to the people who answered the request, labelled as the vendor's words. Nothing acts on it.
@@ -12,6 +13,7 @@ A vendor's reply is untrusted text: it is cleaned, capped, stored, and passed to
 from __future__ import annotations
 
 import hashlib
+import hmac
 import logging
 import re
 from dataclasses import dataclass
@@ -19,11 +21,12 @@ from datetime import timedelta
 from typing import Any, Optional
 
 from erp_agents.core.common import iso, short_id, untrusted
+from erp_agents.core.config import HASH_KEY_ENV, hash_key
 
 log = logging.getLogger(__name__)
 OUTSIDE_WINDOW = "(code 131047)"
 MAX_REPLY = 1500
-REPLY_WINDOW_DAYS = 30            # a reply is matched to a message sent at most this long ago
+KEYED = "hmac1"                   # vendor_messages.hash_kind of a message whose number was hashed with the key
 
 
 def whatsapp_number(raw: str, country_code: str = "") -> Optional[str]:
@@ -52,7 +55,17 @@ def whatsapp_number(raw: str, country_code: str = "") -> Optional[str]:
     return out if 8 <= len(out) <= 15 else None
 
 
-def address_hash(channel: str, address: str) -> str:
+def address_hash(channel: str, address: str, key: Optional[bytes]) -> Optional[str]:
+    """Keyed hash (HMAC-SHA256) of a vendor's number or address, to recognise their reply (finding F-8). A plain hash of a phone number can be tested against every possible
+    number by anybody holding a copy of the database; this one cannot without the key, which lives in the environment. No key = nothing is hashed (None)."""
+    if key is None:
+        return None
+    return hmac.new(key, f"{channel}:{address.strip().lower()}".encode(), hashlib.sha256).hexdigest()
+
+
+def legacy_address_hash(channel: str, address: str) -> str:
+    """The unkeyed SHA-256 that versions 1 to 3 stored. Used only to recognise a reply to a message sent before the keyed hash existed: those hashes cannot be re-keyed (the
+    number was never stored) and are erased when their reply window ends."""
     return hashlib.sha256(f"{channel}:{address.strip().lower()}".encode()).hexdigest()
 
 
@@ -168,10 +181,28 @@ class VendorMessenger:
 
     def _record(self, purpose: str, ref_id: str, supplier: str, channel: str, address: str, ok: bool, error: Optional[str], approval_id: Optional[str], sent_by: str) -> str:
         mid = short_id(10)
-        self.app.db.execute("INSERT INTO vendor_messages(id, purpose, ref_id, supplier, channel, address_hash, status, error, approval_id, sent_by, sent_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                            (mid, purpose, ref_id, supplier, channel, address_hash(channel, address), "sent" if ok else "failed", untrusted(error, 300) if error else None,
+        keyed = address_hash(channel, address, hash_key())
+        if keyed is None and channel == "whatsapp":
+            log.warning("%s is not set (or is shorter than 32 characters): the vendor's number is not hashed, so a WhatsApp reply to this message cannot be recognised. "
+                        "Put a long random value in .env (see .env.example).", HASH_KEY_ENV)
+        self.app.db.execute("INSERT INTO vendor_messages(id, purpose, ref_id, supplier, channel, address_hash, hash_kind, status, error, approval_id, sent_by, sent_at) "
+                            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                            (mid, purpose, ref_id, supplier, channel, keyed, KEYED if keyed else None, "sent" if ok else "failed", untrusted(error, 300) if error else None,
                              approval_id, sent_by, iso(self.app.clock())))
         return mid
+
+    def close_replies(self, purpose: str, ref_id: str) -> int:
+        """The order was received or the price round ended (finding F-9): what a vendor writes later is no longer a reply to these messages. Their hash goes too, as there is
+        nothing left to recognise."""
+        done = self.app.db.execute("UPDATE vendor_messages SET closed_at=?, address_hash=NULL WHERE purpose=? AND ref_id=? AND closed_at IS NULL", (iso(self.app.clock()), purpose, ref_id))
+        return done.rowcount
+
+    def forget_expired(self) -> int:
+        """Erase the hash of every message older than the reply window: it has no use after that (a reply is no longer matched), and the hashes of versions 1 to 3 were not
+        keyed. The record that the message was sent stays."""
+        cutoff = iso(self.app.clock() - timedelta(days=self.cfg.vendor_reply_window_days))
+        done = self.app.db.execute("UPDATE vendor_messages SET address_hash=NULL WHERE address_hash IS NOT NULL AND sent_at<?", (cutoff,))
+        return done.rowcount
 
     def sent(self, purpose: str, ref_id: str) -> list[dict[str, Any]]:
         return [dict(r) for r in self.app.db.query("SELECT id, supplier, channel, status, error, approval_id, sent_at FROM vendor_messages WHERE purpose=? AND ref_id=? ORDER BY sent_at",
@@ -185,18 +216,50 @@ class VendorMessenger:
         """A WhatsApp message from a number we wrote to: keep it and pass it to the people who answered the request. Not ours = False (the core answers as usual)."""
         if getattr(event, "channel", "") != "whatsapp" or not event.text:
             return False
-        h = address_hash("whatsapp", re.sub(r"\D", "", event.sender or ""))
-        since = iso(self.app.clock() - timedelta(days=REPLY_WINDOW_DAYS))
-        row = self.app.db.query_one("SELECT * FROM vendor_messages WHERE address_hash=? AND status='sent' AND sent_at>=? ORDER BY sent_at DESC LIMIT 1", (h, since))
+        cfg, now = self.cfg, self.app.clock()
+        row = self._open_message(re.sub(r"\D", "", event.sender or ""), now, cfg.vendor_reply_window_days)
         if row is None:
-            return False
+            return False                                          # not a number we wrote to lately, or its order was received / its round ended: the core answers as usual
+        supplier, day_ago = row["supplier"], iso(now - timedelta(hours=24))
         text = untrusted(event.text, MAX_REPLY)
-        self.app.db.execute("INSERT INTO vendor_replies(message_id, supplier, purpose, ref_id, channel, text, received_at) VALUES (?,?,?,?,?,?,?)",
-                            (row["id"], row["supplier"], row["purpose"], row["ref_id"], "whatsapp", text, iso(self.app.clock())))
+        same = hashlib.sha256(" ".join(text.lower().split()).encode()).hexdigest()
+        if self.app.db.query_one("SELECT 1 FROM vendor_replies WHERE supplier=? AND text_hash=? AND received_at>=?", (supplier, same, day_ago)):
+            log.info("dropped a repeated reply from supplier %s", supplier)
+            return True                                           # ours, but already kept: nothing is stored, nothing is passed on
+        if self._count("SELECT COUNT(*) AS n FROM vendor_replies WHERE supplier=? AND received_at>=?", (supplier, day_ago)) >= cfg.vendor_reply_keep_per_day:
+            log.info("supplier %s has sent %d replies in a day: this one is dropped", supplier, cfg.vendor_reply_keep_per_day)
+            return True
+        if self._count("SELECT COUNT(*) AS n FROM vendor_replies WHERE supplier=? AND relayed=1 AND received_at>=?", (supplier, day_ago)) < cfg.vendor_reply_relay_per_day:
+            relayed = 1                                           # one of the first few of the day: passed on in full
+        elif self._count("SELECT COUNT(*) AS n FROM vendor_replies WHERE supplier=? AND relayed=2 AND received_at>=?", (supplier, day_ago)):
+            relayed = 0                                           # the 'more replies' line has been sent today: kept with the request, silently
+        else:
+            relayed = 2                                           # the first one over the limit: one line says there are more
+        self.app.db.execute("INSERT INTO vendor_replies(message_id, supplier, purpose, ref_id, channel, text, received_at, relayed, text_hash) VALUES (?,?,?,?,?,?,?,?,?)",
+                            (row["id"], supplier, row["purpose"], row["ref_id"], "whatsapp", text, iso(now), relayed, same))
         what = {"chase": f"about order {row['ref_id']}", "quote": "to your request for a price"}.get(row["purpose"], "")
         note = (" If it is a price, enter it as a Supplier Quotation in ERPNext: the comparison reads prices from there, never from a message." if row["purpose"] == "quote" else
                 " If it gives a new delivery date, update the purchase order in ERPNext.")
-        if row["approval_id"]:
-            self.app.approvals.tell_recipients(row["approval_id"], f"Reply from vendor {row['supplier']} {what} (their words, not checked):\n\"{text}\"{note}")
-        log.info("kept a reply from supplier %s (%s %s)", row["supplier"], row["purpose"], row["ref_id"])
+        if row["approval_id"] and relayed == 1:
+            self.app.approvals.tell_recipients(row["approval_id"], f"Reply from vendor {supplier} {what} (their words, not checked):\n\"{text}\"{note}")
+        elif row["approval_id"] and relayed == 2:
+            self.app.approvals.tell_recipients(row["approval_id"], f"More replies from vendor {supplier} {what} have arrived than are passed on here (the limit is "
+                                                                   f"{cfg.vendor_reply_relay_per_day} a day). The rest are kept with the request: open it and read them under Details. Nothing acts on them.")
+        log.info("kept a reply from supplier %s (%s %s)", supplier, row["purpose"], row["ref_id"])
         return True
+
+    def _count(self, sql: str, params: tuple) -> int:
+        return int(self.app.db.query_one(sql, params)["n"])
+
+    def _open_message(self, digits: str, now: Any, window_days: int) -> Optional[Any]:
+        """The latest message we sent to this number inside the reply window and not yet closed (the order received, the price round ended). A message sent before the keyed
+        hash existed is found by its old, unkeyed hash; those rows lose it when their window ends (`forget_expired`)."""
+        since = iso(now - timedelta(days=window_days))
+        wanted = [(legacy_address_hash("whatsapp", digits), "")]
+        key = hash_key()
+        if key is not None:
+            wanted.append((address_hash("whatsapp", digits, key), KEYED))
+        found = [self.app.db.query_one("SELECT * FROM vendor_messages WHERE address_hash=? AND COALESCE(hash_kind, '')=? AND status='sent' AND sent_at>=? AND closed_at IS NULL "
+                                       "ORDER BY sent_at DESC LIMIT 1", (h, kind, since)) for h, kind in wanted]
+        found = [r for r in found if r is not None]
+        return max(found, key=lambda r: r["sent_at"]) if found else None

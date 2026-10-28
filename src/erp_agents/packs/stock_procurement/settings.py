@@ -310,6 +310,18 @@ class FollowUpSettings(BaseModel):
     )
     signature: str = Field("", max_length=200, description="Signed at the end of every message to a vendor, for example 'Purchasing, Test Trading Co'.")
 
+    # ---- a vendor's WhatsApp replies
+    vendor_reply_window_days: int = Field(
+        30, ge=1, le=120, description="How many days after a message to a vendor their WhatsApp reply is still matched to it. It ends sooner when the order is received "
+                                      "or the price round has been compared; after that the reply is not taken.",
+    )
+    vendor_reply_relay_per_day: int = Field(
+        3, ge=1, le=20, description="The most replies from one vendor that are passed on to you in a day. Later ones are kept with the request, and you get one line saying there are more.",
+    )
+    vendor_reply_keep_per_day: int = Field(
+        30, ge=5, le=200, description="The most replies from one vendor that are kept in a day. Beyond this they are dropped, so one number cannot fill the database.",
+    )
+
     # ---- chasing late deliveries
     chase_enabled: bool = Field(True, description="Watch open purchase orders and ask you whether to remind the vendor when a delivery is late.")
     chase_grace_days: int = Field(1, ge=0, le=30, description="Days after the due date before an order counts as late.")
@@ -374,6 +386,8 @@ class FollowUpSettings(BaseModel):
                 raise ValueError(f"{name} must have 5 fields, e.g. '30 7 * * *'")
         if not (self.count_a_days <= self.count_b_days <= self.count_c_days):
             raise ValueError("count_a_days <= count_b_days <= count_c_days: A items are counted most often")
+        if self.vendor_reply_relay_per_day > self.vendor_reply_keep_per_day:
+            raise ValueError("vendor_reply_relay_per_day cannot be more than vendor_reply_keep_per_day")
         return self
 
 

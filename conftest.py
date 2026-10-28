@@ -65,6 +65,12 @@ class FakeHTTP:
         return [c for c in self.calls if method_or_sub in c[0]]
 
 
+@pytest.fixture(autouse=True)
+def _vendor_hash_key(monkeypatch):
+    """The secret that keys the hash of a vendor's number (ERP_AGENTS_HASH_KEY, finding F-8): a fixed one for every test. The tests of what happens without it unset it themselves."""
+    monkeypatch.setenv("ERP_AGENTS_HASH_KEY", "test-only-hash-key-0123456789abcdef-0123456789")
+
+
 @pytest.fixture
 def clock():
     return FakeClock()

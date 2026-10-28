@@ -53,6 +53,23 @@ def llm_key_sources_from_env() -> dict[str, str]:
     return {provider: name for provider, (name, _value) in _found_keys().items()}
 
 
+HASH_KEY_ENV = "ERP_AGENTS_HASH_KEY"
+MIN_HASH_KEY_LENGTH = 32
+
+
+def hash_key() -> Optional[bytes]:
+    """The secret that keys the hash used to recognise a vendor's phone number or address when they reply (finding F-8). It comes from the environment (the .env file is read
+    into it at start), never from a setting or the database. None when it is missing or shorter than 32 characters: then nothing is hashed and a reply cannot be matched."""
+    value = os.environ.get(HASH_KEY_ENV, "").strip()
+    return value.encode("utf-8") if len(value) >= MIN_HASH_KEY_LENGTH else None
+
+
+def hash_key_state() -> str:
+    """'ok', 'missing' or 'short', for the start-up log and `doctor` (the key itself is never shown)."""
+    value = os.environ.get(HASH_KEY_ENV, "").strip()
+    return "missing" if not value else "ok" if len(value) >= MIN_HASH_KEY_LENGTH else "short"
+
+
 def with_secrets(cfg: dict[str, Any]) -> dict[str, Any]:
     """Adds what must come from the environment: the hosted-model keys, and the key for another MCP server's tools."""
     cfg["llm_keys"] = llm_keys_from_env()

@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from .api.hardening import ACCESS_KEY_MODES, MIN_KEY_LENGTH, access_key_mode, demo_key_problem, weak_key, well_known_key_users
+from .config import HASH_KEY_ENV, hash_key_state
 from .ops import AlreadyRunning, InstanceLock, verify_database
 from .storage import SCHEMA_VERSION
 
@@ -180,6 +181,19 @@ def check_network(cfg: dict[str, Any]) -> list[Check]:
     return out
 
 
+def check_hash_key(cfg: dict[str, Any]) -> list[Check]:
+    """The secret that keys the hash of a vendor's number (finding F-8). Only WhatsApp replies from vendors need it; the key itself is never shown."""
+    state = hash_key_state()
+    if state == "ok":
+        return [Check("Secrets", OK, "the key for the hashes of vendors' numbers is set", f"{HASH_KEY_ENV}: a vendor's number is stored only as a keyed hash")]
+    whatsapp = bool(((cfg.get("channels") or {}).get("whatsapp") or {}).get("enabled"))
+    what = "is not set" if state == "missing" else "is shorter than 32 characters"
+    if whatsapp:
+        return [Check("Secrets", WARN, f"{HASH_KEY_ENV} {what}", "a vendor's WhatsApp reply cannot be recognised, so replies to your reminders and price requests are not passed on",
+                      "put a long random value (32+ characters) in .env, for example: python -c \"import secrets; print(secrets.token_urlsafe(32))\"")]
+    return [Check("Secrets", INFO, f"{HASH_KEY_ENV} {what}", "only needed when vendors reply on WhatsApp (nothing is stored without it)", "put a long random value in .env when you switch WhatsApp on")]
+
+
 def check_secrets_in_files(config_path: Optional[Path]) -> list[Check]:
     if config_path is None or not config_path.is_file():
         return []
@@ -295,7 +309,7 @@ def run_doctor(cfg: dict[str, Any], config_path: Optional[str] = None, now: Opti
     cp = Path(config_path) if config_path else None
     db_path = str((cfg.get("database") or {}).get("path", "./data/erp_agents.db"))
     checks: list[Check] = []
-    checks += check_access(cfg) + check_network(cfg) + check_secrets_in_files(cp) + check_files(cp, env_file_for(cp), db_path)
+    checks += check_access(cfg) + check_network(cfg) + check_secrets_in_files(cp) + check_hash_key(cfg) + check_files(cp, env_file_for(cp), db_path)
     checks += check_database(db_path, time.time() if now is None else now) + check_approvers(cfg) + check_erp_account(cfg)
     return checks
 

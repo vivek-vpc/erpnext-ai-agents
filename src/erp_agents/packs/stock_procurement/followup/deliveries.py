@@ -181,6 +181,9 @@ class DeliveryChaser:
             if row["approval_id"]:
                 self.app.approvals.cancel(row["approval_id"], "the delivery has arrived (or the order was closed)")
             closed += 1
+        for ref in {r["ref_id"] for r in self.app.db.query("SELECT DISTINCT ref_id FROM vendor_messages WHERE purpose='chase' AND closed_at IS NULL")}:
+            if ref not in open_names:                        # the goods came or the order was closed, even if a person had stopped the chase: a later message is not a reply
+                self.messenger.close_replies("chase", ref)
         return closed
 
     def _chase(self, po: str) -> Optional[dict[str, Any]]:

@@ -672,9 +672,18 @@ Supplier's own e-mail and mobile fields, then its linked Contacts, primary first
 (`frappe.core.doctype.communication.email.make`), so it is recorded in the timeline of the purchase order or supplier; set up an outgoing Email Account in ERPNext
 first. WhatsApp goes through your WhatsApp channel; set `whatsapp_country_code` (for example 91) for numbers written without one, and, to reach a vendor who has not
 written to you in the last 24 hours, `whatsapp_vendor_template` (an approved template with one body variable). `vendor_channel` chooses e-mail first, WhatsApp first,
-or only one. The address is looked up at the moment of sending and is never stored (only a one-way hash, to recognise a WhatsApp reply), never shown in a request,
+or only one. The address is looked up at the moment of sending and is never stored (only a keyed hash, to recognise a WhatsApp reply), never shown in a request,
 never in a tool result and never sent to a language model. A vendor's WhatsApp reply is kept and passed to the people who answered the request, marked as their
 words; nothing acts on it.
+
+* **The hash is keyed.** It is HMAC-SHA256 with the secret `ERP_AGENTS_HASH_KEY` from `.env` (32+ characters; see `.env.example`), so a copy of the database alone cannot be tested
+  against every possible phone number. Without the key nothing is hashed and a vendor's WhatsApp reply cannot be recognised (the start-up log and `doctor` say so; e-mail is
+  unaffected). Messages sent before the keyed hash existed cannot be re-keyed, because the number was never stored: they keep their old hash only until their reply window
+  ends, then it is erased. The hash of every message is erased when its window ends.
+* **How long a reply is accepted.** `followup.vendor_reply_window_days` (default 30). It ends sooner when the purchase order is received or closed, and when a price round has
+  been compared. A message after that is not treated as a reply.
+* **A flood of replies.** Per vendor and day, the first `vendor_reply_relay_per_day` (default 3) replies are passed on; after that you get one line saying there are more, and the
+  rest are kept with the request (Details). Beyond `vendor_reply_keep_per_day` (default 30) they are dropped, and a reply identical to one already kept is ignored.
 
 **ERPNext permissions** the service account needs in addition: read Purchase Invoice, Sales Order, Contact, Item Alternative, Stock Reconciliation; create
 Communication (to send e-mail). `erp-agents erp-check-access` lists them.
