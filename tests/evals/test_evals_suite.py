@@ -3,6 +3,8 @@
 No model, no ERPNext, no network: the application is asked each question where a person would ask it, a scripted stand-in plays the language model, and what comes back
 is compared with what the case says a correct answer must and must not contain. A failure names the case; `python -m tools.evals --show <id>` prints what the application said.
 How to add a case, and what the gate is: docs/EVALUATION.md."""
+from pathlib import Path
+
 import pytest
 
 from tools.evals.cases import ENTRIES, GROUPS, load_cases
@@ -45,3 +47,18 @@ def test_the_cases_cover_every_way_in_and_the_five_kinds_of_question():
     assert {"item_stock", "stock_overview", "vendor_compare", "document_status", "pending_approvals", "decision_history"} <= intents
     assert {c.asker for c in CASES} == {"viewer", "approver"}
     assert any(c.known_gap for c in CASES) is (load_thresholds()["known_gaps_max"] > 0)          # the limit on known gaps is not left looser than the gaps that exist
+
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def test_the_documents_state_the_number_of_cases_there_are():
+    n = len(CASES)
+    for name, phrase in (("docs/EVALUATION.md", f"{n} golden cases"), ("docs/AGENTS.md", f"{n} golden questions"), ("CONTRIBUTING.md", f"{n} golden questions"),
+                         ("README.md", f"{n} golden questions"), ("docs/KNOWN_LIMITATIONS.md", f"{n} golden questions")):
+        assert phrase in (ROOT / name).read_text(encoding="utf-8"), f"{name} should say {phrase!r}: the number of cases changed, or the document is out of date"
+
+
+def test_ci_runs_the_evaluation_as_a_job_of_its_own():
+    text = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert "ai-evals:" in text and 'python -m tools.evals --check --markdown "$GITHUB_STEP_SUMMARY"' in text

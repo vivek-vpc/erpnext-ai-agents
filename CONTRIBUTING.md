@@ -14,9 +14,11 @@ erp-agents demo                  # a quick look at what it does
 
 Live checks against a real ERPNext (`python -m tools.e2e.run_live`) are optional and need your own test instance; they create and delete a few draft documents.
 
+The AI path has its own evaluation, which also runs in `pytest`: `python -m tools.evals --check` replays 98 golden questions with a scripted stand-in for the language model and fails when a check no longer holds ([docs/EVALUATION.md](docs/EVALUATION.md)). To run the same questions on a real model and compare two: `python -m tools.e2e.agents_eval --suite golden --against ...`.
+
 ## Rules for changes
 
-1. **Tests with every change.** A bug fix starts with a test that fails; a feature comes with tests for the normal case, the refusal cases and the "nothing happens" cases. CI must pass on Linux and Windows.
+1. **Tests with every change.** A bug fix starts with a test that fails (for a wrong answer from the assistant, a case in `tests/evals/cases/`: see [docs/EVALUATION.md](docs/EVALUATION.md)); a feature comes with tests for the normal case, the refusal cases and the "nothing happens" cases. CI must pass on Linux and Windows.
 2. **The assistant never decides alone.** Anything that orders, approves or changes the ERP must go through an approval request and be created as a draft with the approver recorded. Numbers in messages and answers come from code and ERP data, never from a language model.
 3. **Keep the edges thin** (see [docs/DEVELOPING.md](docs/DEVELOPING.md)). Business logic must not import web, scheduler, HTTP or SQL libraries, and SQL lives only in repository classes. This is what makes the later Frappe app a swap of the edges instead of a rewrite.
 4. **No secrets, no personal data** in code, tests, docs or logs. Use `agent@example.com`-style placeholders. Test data is fictional.

@@ -26,6 +26,21 @@ jobs:
       - name: Test
         run: python -m pytest -q
 
+  ai-evals:
+    name: AI evaluation (no model, no ERPNext)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,agents]"
+      - name: Golden cases and the limits in tests/evals/thresholds.json (the table appears on the pull request)
+        run: python -m tools.evals --check --markdown "$GITHUB_STEP_SUMMARY"
+
   security-scans:
     name: bandit and pip-audit
     runs-on: ubuntu-latest

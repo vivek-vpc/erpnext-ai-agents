@@ -184,6 +184,10 @@ Then **Settings > AI agents** > "Let the AI agents help" (or `agents.enabled: tr
 | `GET/POST /api/v1/agents/reviews/{request id}` | approve | The second opinion on an order request |
 | `GET /api/v1/agents/tasks[/{id}]` | look (own questions) · admin (`?trace=true`) | What ran, and what was sent |
 
+## Checked on every change: the AI evaluation
+
+98 golden questions run in CI on every pull request, with no model and no ERPNext: a scripted stand-in plays the model, including bad replies (an invented figure, a guess, malformed JSON), and the suite requires that each is caught, that nothing is written to ERPNext, and that no request is prepared unless the person asked. The limits are in `tests/evals/thresholds.json`. The same questions that a real model can answer can be run on it, and on a second model beside it, with `python -m tools.e2e.agents_eval --suite golden --against ...`. How it works, how to add a question, and what it found: [EVALUATION.md](EVALUATION.md).
+
 ## Measured on the author's laptop (24 Oct 2026)
 
 Hardware: Intel Core i3-1215U (a 15-watt laptop chip: 2 fast + 4 efficient cores), 24 GB RAM, no usable GPU. Software: Ollama 0.40.6, llama3.1 8B (Q4_K_M, the `llama3.1:latest` download), context 8,192, against the live ERPNext (202 items, 32 below their rules). Everything read-only. Reproduce or compare another model with `python -m tools.e2e.agents_eval --model <name>`.
