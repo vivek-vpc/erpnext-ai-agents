@@ -10,7 +10,7 @@ from .audit import AuditChain
 from .history import DecisionHistory
 from .agents.service import AgentService
 from .agents.store import AgentLog
-from .api.hardening import MIN_KEY_LENGTH, access_key_warning, weak_key
+from .api.hardening import MIN_KEY_LENGTH, access_key_warning, demo_key_problem, weak_key
 from .approvals.channels.base import Channel
 from .approvals.channels.registry import build_channels
 from .approvals.models import Recipient
@@ -30,6 +30,10 @@ from .toolkit import Toolkit
 from .workorders import WorkOrderQueue
 
 log = logging.getLogger(__name__)
+
+
+class StartupRefused(ValueError):
+    """The configuration is one the program will not start with. The text says why in plain words; the command line prints it without a traceback."""
 
 
 @dataclass
@@ -94,6 +98,9 @@ def build_app(
     login: Optional[ErpNextLogin] = None,
 ) -> App:
     cfg = config if config is not None else load_config(config_path)
+    problem = demo_key_problem(cfg)             # before anything is created or opened
+    if problem:
+        raise StartupRefused(problem)
 
     path = db_path or cfg["database"]["path"]
     if path != ":memory:":

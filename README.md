@@ -421,7 +421,7 @@ Keep the server on localhost or behind HTTPS.
 
 Full report with what was found, fixed and still open: [docs/PENTEST_REPORT.md](docs/PENTEST_REPORT.md). What it means for you day to day:
 
-* **Keys.** The console key in `.env` (`ERP_AGENTS_OWNER_TOKEN`) must be long and random (24+ characters); there is no fallback value. A short key or the demo key works only on this machine, never through a tunnel.
+* **Keys.** The console key in `.env` (`ERP_AGENTS_OWNER_TOKEN`) must be long and random (24+ characters); there is no fallback value. A short key works only on this machine, never through a tunnel. The well-known demo key (`demo-owner-token`) is refused outright: the program does not start with it unless the settings say `auth.allow_demo_key: true`, which is accepted only with the built-in demo ERP (it is set in `config/settings.yaml`, the demo, and nowhere else).
 * **What a visitor through the tunnel can reach** (`server.remote_access`): `full` (console, sign-in, API and webhooks) or `webhooks_only` (only the WhatsApp/Telegram webhooks and a liveness check; everything else answers 404). Choose `webhooks_only` if nobody needs the console away from this machine.
 * **Browser protections** are on for every answer (no framing, a policy that lets the console run only its own script, no caching of API answers). Size limits: webhooks 1 MB, sign-in 16 KB, other API calls 256 KB.
 * **API documentation** (`/docs`) is off; `server.docs: true` turns it on.

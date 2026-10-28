@@ -331,10 +331,14 @@ def main() -> int:
         assert h["x-content-type-options"] == "nosniff" and "no-store" in c.get("/api/v1/settings/system", headers=H("owner")).headers["cache-control"]
         assert c.post("/webhooks/whatsapp", content=b"A" * 2_000_000).status_code == 413
         assert c.post("/api/v1/chat", content=b"A" * 300_000, headers={**H("owner"), "content-type": "application/json"}).status_code == 413
-        demo_app, *_ = make_app(cfg={**make_config(), "auth": {"access_keys": "anywhere", "min_key_length": 24, "tokens": [{"token": "demo-owner-token", "user": "owner", "roles": ["admin", "approver"]}]}})
-        assert TestClient(create_app(demo_app)).get("/api/v1/settings/system", headers={"Authorization": "Bearer demo-owner-token"}).status_code == 401
+        from erp_agents.core.bootstrap import StartupRefused
+        try:
+            make_app(cfg={**make_config(), "auth": {"access_keys": "anywhere", "min_key_length": 24, "allow_demo_key": True, "tokens": [{"token": "demo-owner-token", "user": "owner", "roles": ["admin", "approver"]}]}})
+            raise AssertionError("the program started with the well-known demo key on a real ERPNext")
+        except StartupRefused:
+            pass                                                                                 # refused at start-up, flag or no flag (F-11)
         assert len(TOK["owner"]) >= 24
-        return "docs/openapi 404; X-Frame-Options DENY + CSP pinned to the console script; 2 MB webhook and 300 KB API bodies -> 413; the well-known demo key is refused from outside the server machine; the live owner key is 24+ characters"
+        return "docs/openapi 404; X-Frame-Options DENY + CSP pinned to the console script; 2 MB webhook and 300 KB API bodies -> 413; the program refuses to start with the well-known demo key on a real ERPNext; the live owner key is 24+ characters"
 
     @case("CFG-04", "P0", "Authentication and roles on protected APIs")
     def _():

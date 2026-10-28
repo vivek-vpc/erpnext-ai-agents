@@ -13,7 +13,7 @@ from typing import Any, Optional
 
 from .approvals.channels.telegram import TelegramChannel
 from .approvals.render import render_plain
-from .bootstrap import App, build_app
+from .bootstrap import App, StartupRefused, build_app
 from .config import load_config
 from . import doctor as doctor_checks
 from . import ops
@@ -514,7 +514,11 @@ def main(argv: Optional[list[str]] = None) -> int:
             pass
     args = parse_cli(build_parser(), argv)
     logging.basicConfig(level=logging.DEBUG if args.verbose_log else logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    return args.fn(args)
+    try:
+        return args.fn(args)
+    except StartupRefused as exc:                # a configuration it will not start with: say why, in words, without a traceback
+        print(f"erp-agents: {exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

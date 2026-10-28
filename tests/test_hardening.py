@@ -158,7 +158,7 @@ def test_a_tunnel_that_only_adds_an_unlisted_style_header_cannot_use_the_access_
 
 # ------------------------------------------------------------------ weak and well-known keys
 def test_the_well_known_demo_key_works_on_the_server_machine_and_nowhere_else(make_app):
-    app = make_app(cfg={"auth": {"min_key_length": 24, "tokens": [{"token": "demo-owner-token", "user": "owner", "roles": ["admin", "approver"]}]}})
+    app = make_app(cfg={"auth": {"min_key_length": 24, "allow_demo_key": True, "tokens": [{"token": "demo-owner-token", "user": "owner", "roles": ["admin", "approver"]}]}})        # the flag is how a demo starts (tests/test_demo_key.py)
     local = TestClient(create_app(app), **LOCAL)
     assert local.get("/api/v1/settings/system", headers=hdr("demo-owner-token")).status_code == 200
     remote = TestClient(create_app(app))                                                          # any other machine, or the tunnel
@@ -178,7 +178,7 @@ def test_a_short_key_is_refused_from_outside_but_a_long_random_one_is_not(make_a
 
 def test_starting_with_a_weak_key_is_reported_in_the_log_without_printing_it(make_app, caplog):
     with caplog.at_level(logging.WARNING):
-        make_app(cfg={"auth": {"min_key_length": 24, "tokens": [{"token": "demo-owner-token", "user": "owner", "roles": ["admin"]}]}})
+        make_app(cfg={"auth": {"min_key_length": 24, "allow_demo_key": True, "tokens": [{"token": "demo-owner-token", "user": "owner", "roles": ["admin"]}]}})
     text = " ".join(r.getMessage() for r in caplog.records)
     assert "access key for owner is short or well known" in text and "demo-owner-token" not in text
 

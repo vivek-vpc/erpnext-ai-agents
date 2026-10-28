@@ -34,6 +34,9 @@ approvals:
         - { type: inbox }
 
 auth:
+  # This file is a demo on the built-in mock ERP, so it may fall back to the well-known key below. The program starts with a well-known key ONLY when this flag
+  # is written down, and the flag is refused with a real ERPNext (erp.type: erpnext). Remove the flag as soon as you set ERP_AGENTS_OWNER_TOKEN.
+  allow_demo_key: true
   tokens:
     - { token: "${ERP_AGENTS_OWNER_TOKEN:-demo-owner-token}", user: owner, roles: [admin, approver] }
 

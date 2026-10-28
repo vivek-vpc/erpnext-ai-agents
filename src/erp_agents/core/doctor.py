@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
-from .api.hardening import ACCESS_KEY_MODES, MIN_KEY_LENGTH, access_key_mode, weak_key
+from .api.hardening import ACCESS_KEY_MODES, MIN_KEY_LENGTH, access_key_mode, demo_key_problem, weak_key, well_known_key_users
 from .ops import AlreadyRunning, InstanceLock, verify_database
 from .storage import SCHEMA_VERSION
 
@@ -116,6 +116,15 @@ def check_access(cfg: dict[str, Any]) -> list[Check]:
     weak = [t.get("user", "?") for t in keys if weak_key(str(t["token"]), int(auth.get("min_key_length", MIN_KEY_LENGTH)))]
     raw = str(auth.get("access_keys") or "").strip().lower()
     mode = access_key_mode(auth)
+    known = well_known_key_users(auth)
+    if known:
+        who = ", ".join(sorted(set(known)))
+        if demo_key_problem(cfg):
+            out.append(Check("Sign-in", FAIL, "a well-known access key is configured: the assistant will not start", f"key(s) for: {who}",
+                             "set a long random ERP_AGENTS_OWNER_TOKEN in .env (for a demo on the built-in demo ERP only: auth.allow_demo_key: true)"))
+        else:
+            out.append(Check("Sign-in", INFO, "a well-known demo key is allowed (demo ERP only)", f"auth.allow_demo_key is on for: {who}; the key works on this machine only",
+                             "use a long random ERP_AGENTS_OWNER_TOKEN for anything but a demo"))
     if raw and raw not in ACCESS_KEY_MODES:
         out.append(Check("Sign-in", WARN, f"auth.access_keys is '{raw[:20]}', which is not local, anywhere or off", "treated as local", "write local, anywhere or off"))
     if mode == "anywhere":
