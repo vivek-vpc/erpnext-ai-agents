@@ -9,6 +9,7 @@ from typing import Any, Optional
 from . import metrics, obs
 from .audit import AuditChain
 from .history import DecisionHistory
+from .jobs import JobLog
 from .agents.service import AgentService
 from .agents.store import AgentLog
 from .api.hardening import MIN_KEY_LENGTH, access_key_warning, demo_key_problem, weak_key
@@ -64,6 +65,8 @@ class App:
     audit: Optional[Any] = None                     # the seal over the decision history (audit.py)
     history: Optional[Any] = None                   # "Why did you do that?": every past decision with its reasoning (history.py)
     observability: Optional[Any] = None             # the `observability:` section (obs.py ObsSettings): log format, metrics, tracing
+    job_log: Optional[Any] = None                   # when each scheduled job last ran and how it ended (jobs.py)
+    scheduler: Optional[Any] = None                 # the running scheduler, set by `serve` (None in a process that only reads or answers one command): /ready looks at it
 
     def __getattr__(self, name: str) -> Any:
         # reached only when the application itself has no such attribute: a service a pack provided
@@ -156,6 +159,7 @@ def build_app(
     app = App(cfg, db, settings, erp, channels, router, approvals, workorders, tokens, clock, packs,
               login=login, sessions=sessions, throttle=LoginThrottle() if login else None, observability=observability)
     app.agent_log = AgentLog(db, clock)
+    app.job_log = JobLog(db, clock)
     app.toolkit = Toolkit(app, log_call=app.agent_log.log_tool)
     app.toolkit.is_enabled = packs.is_enabled      # a pack that is switched off answers nothing, at once
     app.agents = AgentService(app)                 # the optional 'mcp' package is only needed when an agent actually runs

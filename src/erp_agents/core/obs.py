@@ -38,18 +38,21 @@ TEXT_FORMAT = "%(asctime)s %(levelname)s %(name)s%(context)s: %(message)s"
 
 _task_id: ContextVar[Optional[str]] = ContextVar("erp_agents_task_id", default=None)
 _request_id: ContextVar[Optional[str]] = ContextVar("erp_agents_request_id", default=None)
+_job_id: ContextVar[Optional[str]] = ContextVar("erp_agents_job_id", default=None)
 calls = logging.getLogger("erp_agents.calls")
 
 
 # ------------------------------------------------------------------------------------------------------------------------ ids
 @contextmanager
-def bind(task_id: Optional[str] = None, request_id: Optional[str] = None) -> Iterator[None]:
-    """Everything logged inside the block (and in the threads and tasks it starts through anyio or asyncio) carries these ids."""
+def bind(task_id: Optional[str] = None, request_id: Optional[str] = None, job: Optional[str] = None) -> Iterator[None]:
+    """Everything logged inside the block (and in the threads and tasks it starts through anyio or asyncio) carries these ids: an agent task, an HTTP request, a scheduled job."""
     marks = []
     if task_id is not None:
         marks.append((_task_id, _task_id.set(task_id)))
     if request_id is not None:
         marks.append((_request_id, _request_id.set(request_id)))
+    if job is not None:
+        marks.append((_job_id, _job_id.set(job)))
     try:
         yield
     finally:
@@ -58,7 +61,7 @@ def bind(task_id: Optional[str] = None, request_id: Optional[str] = None) -> Ite
 
 
 def current_ids() -> dict[str, str]:
-    ids = {"task_id": _task_id.get(), "request_id": _request_id.get()}
+    ids = {"task_id": _task_id.get(), "request_id": _request_id.get(), "job": _job_id.get()}
     return {k: v for k, v in ids.items() if v}
 
 
@@ -195,7 +198,7 @@ class ContextFilter(logging.Filter):
 
     def filter(self, record: logging.LogRecord) -> bool:
         ids = current_ids()
-        record.task_id, record.request_id = ids.get("task_id"), ids.get("request_id")
+        record.task_id, record.request_id, record.job = ids.get("task_id"), ids.get("request_id"), ids.get("job")
         record.context = (" [" + " ".join(f"{k.split('_')[0]}={v}" for k, v in ids.items()) + "]") if ids else ""
         return True
 
@@ -239,7 +242,7 @@ class JsonFormatter(logging.Formatter):
         rec = _scrubbed(record)
         out: dict[str, Any] = {"ts": datetime.fromtimestamp(rec.created, timezone.utc).isoformat(timespec="milliseconds"), "level": rec.levelname, "logger": rec.name,
                                "msg": rec.getMessage()}
-        for key in ("task_id", "request_id"):
+        for key in ("task_id", "request_id", "job"):
             if getattr(rec, key, None):
                 out[key] = getattr(rec, key)
         fields = getattr(rec, "fields", None)

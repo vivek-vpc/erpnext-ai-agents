@@ -18,7 +18,7 @@ from types import SimpleNamespace
 from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
-from fastapi.responses import PlainTextResponse, RedirectResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -28,6 +28,7 @@ from .. import metrics
 from ..acting import acting_as
 from ..bootstrap import App
 from ..common import Actor
+from ..health import readiness
 from ..settings_store import SettingsError
 from .observability import RequestContext
 from .hardening import MIN_KEY_LENGTH, BodyLimit, RemoteAccess, SecurityHeaders, access_key_mode, clean_for_log, console_policy, is_local_request, script_hash, weak_key
@@ -220,6 +221,19 @@ def create_app(app_ctx: App, on_system_change=None, lifespan=None) -> FastAPI:
         except HTTPException:
             return {"ok": True}
         return {"ok": True, "erp_reachable": ctx.erp.healthcheck(), "channels": sorted(ctx.channels)}
+
+    @api.get("/ready")
+    def ready(request: Request) -> JSONResponse:
+        """Can it do its work? (/health only says it is alive.) Anybody may ask and is told yes or no, with 503 for no; a signed-in person also gets the checks and why."""
+        checks = readiness(ctx)
+        ok = all(c.ok for c in checks)
+        body: dict[str, Any] = {"ready": ok}
+        try:
+            current_actor(request)
+            body["checks"] = [{"name": c.name, "ok": c.ok, "detail": c.detail} for c in checks]
+        except HTTPException:
+            pass
+        return JSONResponse(body, status_code=200 if ok else 503)
 
     # ------------------------------------------------------------------ metrics: not there at all unless `observability.metrics: true`
     if ctx.observability is not None and ctx.observability.metrics:

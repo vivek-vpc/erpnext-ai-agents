@@ -382,6 +382,7 @@ def _serve(args, create_app, uvicorn, asynccontextmanager, AgentScheduler) -> in
     if fmt != obs.log_format_from(args.log_format):
         obs.configure_logging(logging.DEBUG if args.verbose_log else logging.INFO, fmt)
     scheduler = AgentScheduler(app)
+    app.scheduler = scheduler                           # so that /ready can see whether it is running
 
     @asynccontextmanager
     async def lifespan(_):
