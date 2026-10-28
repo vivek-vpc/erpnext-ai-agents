@@ -6,7 +6,7 @@ How the project checks that the assistant's answers stay right, without a langua
 
 The assistant answers questions in three ways. Most questions are answered by **plain rules** that read the data (stock, vendors, orders, what is waiting for approval). A question the rules cannot place may go to a **language model**, which can only pick one question type from a fixed list, or act as an **agent** that calls read-only tools and writes an answer. Whatever a model writes passes **checks** first (every figure and code must be in a tool's result, no guessing words, no sums of its own, the right JSON shape), gets one chance to be repaired, and otherwise the person is told there is not enough information ([AGENTS.md](AGENTS.md)).
 
-The evaluation is a set of **98 golden cases**: a question, who asks, what the world looks like, what a stand-in for the model says, and what the person must and must not read. It runs in CI on every pull request in about 15 seconds.
+The evaluation is a set of **100 golden cases**: a question, who asks, what the world looks like, what a stand-in for the model says, and what the person must and must not read. It runs in CI on every pull request in about 15 seconds.
 
 It tests **the program's checks around a model, not the model's quality.** The stand-in says exactly what each case's script says, including deliberately bad replies (an invented number, a guess, malformed JSON), and the suite proves each one is caught and nothing bad reaches a person. How good a particular model is at the job is measured by running the same cases on it (below), which needs the model.
 
@@ -109,7 +109,7 @@ If a case shows a defect you will not fix now, give it `known_gap: "what is wron
 | Cases | 60 to 100, and a minimum per group | Coverage cannot rot, and the suite stays readable. |
 | Bad model replies caught | 100% | A wrong reply reaching a person is the failure the checks exist to prevent. |
 | Good model replies wrongly rejected | 0 | The checks must not make the assistant useless. |
-| Known gaps | at most 2 | Known defects stay visible and cannot grow. |
+| Known gaps | none (the cap is 0) | A known defect may stay as a case that fails on purpose, but only by raising this cap in a reviewed change. |
 | Fallback rate | at most 35% | Bad replies are on purpose, but a rising share means the checks reject more than before. |
 | Repairs | at least 8 | The repair step must stay exercised. |
 | Skipped cases | 0 | A run without the agents package says nothing about the model path. |
@@ -137,8 +137,8 @@ Eight of the cases make sense against a real model (the agent's answers, the che
 ## What the suite has found
 
 1. **The chat decided what is overdue with the computer's date, not the application's** (fixed, `99e2c11`). With the application's date at 16 Oct and the computer's at 28 Oct, an order due on 22 Oct was listed as overdue. Every other answer already used the application's clock and time zone.
-2. **A question about an item that does not exist is answered with the overview of all stock** (known gap `item-stock-unknown-code-is-not-hidden`). "How much NOPE-99 do we have?" never says that NOPE-99 is unknown.
-3. **"Which vendor is best for GASKET-X?" goes to the vendor scorecard** (known gap `vendors-best-vendor-for-an-item`), which ranks all vendors on delivery history and ignores the item.
+2. **A question about an item that does not exist was answered with the overview of all stock** (fixed). "How much NOPE-99 do we have?" never said that NOPE-99 is unknown; it now says "I could not find an item with the code NOPE-99", and the same for a vendor comparison. Anything written like an item code (letters, a hyphen, a digit) that is no item and no document number counts.
+3. **"Which vendor is best for GASKET-X?" went to the vendor scorecard** (fixed), which ranks all vendors on delivery history and ignored the item. With an item named it is now a comparison for that item; asking for the scorecard, a ranking, performance, on-time delivery or a rating keeps the scorecard.
 4. In the suite itself: two bad replies were being rejected for the wrong reason (a comma in an unquoted value split a scripted reply in two), found by breaking the grounding check on purpose; `rejected_because` and the loading check now prevent that.
 
 ## Limits of this evaluation

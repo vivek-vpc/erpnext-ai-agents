@@ -55,8 +55,25 @@ cases:
   - id: vendors-best-vendor-for-an-item
     group: vendor_compare
     note: Naming an item makes "which vendor is best for X" a price-and-delivery comparison for X.
-    known_gap: "The word 'best' next to 'vendor' sends the question to the vendor scorecard, which ranks all vendors on delivery history ('not enough goods receipts') and ignores the item (found by this suite, 28 Oct 2026)."
     question: which vendor is best for GASKET-X
     expect:
       intent: vendor_compare
       must_include: ["Gasket Type X", "Prime Supplies"]
+
+  - id: vendors-unknown-code
+    group: vendor_compare
+    note: A comparison for an item that does not exist is not made up; the person is told the code is unknown.
+    question: compare vendors for NOPE-99
+    expect:
+      intent: vendor_compare
+      status: clarify
+      must_include: ["I could not find an item with the code NOPE-99"]
+      must_not_include: ["the best vendor is"]
+
+  - id: vendors-the-scorecard-is-still-the-scorecard
+    group: vendor_compare
+    note: Asking for the scorecard by name keeps the ranking of vendors, even when an item is named.
+    question: Show the vendor scorecard for BOLT-M8
+    expect:
+      intent: vendor_scorecard
+      tools: [vendor_scorecard]

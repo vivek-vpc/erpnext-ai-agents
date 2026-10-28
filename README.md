@@ -20,7 +20,7 @@ It runs on a laptop or a small VPS and needs only open-source software (Python, 
 
 > **Status: beta. Licence: GPL-3.0-or-later.**
 >
-> - 1,626 passed, 1 skipped (a POSIX-only permission test) and 2 expected failures (known wrong answers kept visible as test cases, [docs/EVALUATION.md](docs/EVALUATION.md)) on Windows with Python 3.14, 28 Oct 2026, run against a demo ERP and fake transports (`python -m pytest`), plus `bandit` and `pip-audit`, which report nothing.
+> - 1,630 passed and 1 skipped (a POSIX-only permission test; it includes the AI evaluation, [docs/EVALUATION.md](docs/EVALUATION.md)) on Windows with Python 3.14, 28 Oct 2026, run against a demo ERP and fake transports (`python -m pytest`), plus `bandit` and `pip-audit`, which report nothing.
 > - Checked live against an **ERPNext v16** test instance: reads, vendor comparison with duties and taxes, sign-in through ERPNext, permissions, and creation of a
 >   draft Purchase Order and Material Request ([docs/E2E_TEST_RESULTS.md](docs/E2E_TEST_RESULTS.md) lists every case and what passed, failed or was not run).
 >   Other ERPNext versions have not been tried.
@@ -665,7 +665,7 @@ erp-agents --config config/settings.erpnext.yaml mcp                      # the 
 
 Design, the tools, the checks, measured speed on a laptop CPU and the limits: [docs/AGENTS.md](docs/AGENTS.md).
 
-The assistant's answers are checked on every change: 98 golden questions are replayed in CI with a scripted stand-in for the language model (bad replies included), and the build fails when a wrong reply could reach a person, when something is written to ERPNext, or when a request is prepared that nobody asked for. The same questions can be run on a real model, and on two side by side: [docs/EVALUATION.md](docs/EVALUATION.md).
+The assistant's answers are checked on every change: 100 golden questions are replayed in CI with a scripted stand-in for the language model (bad replies included), and the build fails when a wrong reply could reach a person, when something is written to ERPNext, or when a request is prepared that nobody asked for. The same questions can be run on a real model, and on two side by side: [docs/EVALUATION.md](docs/EVALUATION.md).
 
 ## 8g. Purchasing follow-up and stock intelligence
 

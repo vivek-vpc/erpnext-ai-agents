@@ -71,9 +71,9 @@ cases:
 
   - id: item-stock-unknown-code-is-not-hidden
     group: item_stock
-    note: A code that does not exist should be called unknown, not answered with a different question's answer.
-    known_gap: "Asked about an item code that does not exist, the chat answers with the whole-stock overview and never says that NOPE-99 is unknown (found by this suite, 28 Oct 2026)."
+    note: A code that does not exist is called unknown, not answered with a different question's answer.
     question: How much NOPE-99 do we have?
     expect:
-      must_include: ["NOPE-99"]
-      must_not_include: ["Needing attention"]
+      status: clarify
+      must_include: ["I could not find an item with the code NOPE-99"]
+      must_not_include: ["Needing attention", "you have"]

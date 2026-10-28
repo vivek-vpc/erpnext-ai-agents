@@ -10,7 +10,7 @@
   },
   "bad_replies_caught": 1.0,
   "good_replies_wrongly_rejected_max": 0,
-  "known_gaps_max": 2,
+  "known_gaps_max": 0,
   "fallback_rate_max": 0.35,
   "repairs_min": 8
 }

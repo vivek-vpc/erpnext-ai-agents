@@ -14,7 +14,7 @@ erp-agents demo                  # a quick look at what it does
 
 Live checks against a real ERPNext (`python -m tools.e2e.run_live`) are optional and need your own test instance; they create and delete a few draft documents.
 
-The AI path has its own evaluation, which also runs in `pytest`: `python -m tools.evals --check` replays 98 golden questions with a scripted stand-in for the language model and fails when a check no longer holds ([docs/EVALUATION.md](docs/EVALUATION.md)). To run the same questions on a real model and compare two: `python -m tools.e2e.agents_eval --suite golden --against ...`.
+The AI path has its own evaluation, which also runs in `pytest`: `python -m tools.evals --check` replays 100 golden questions with a scripted stand-in for the language model and fails when a check no longer holds ([docs/EVALUATION.md](docs/EVALUATION.md)). To run the same questions on a real model and compare two: `python -m tools.e2e.agents_eval --suite golden --against ...`.
 
 ## Rules for changes
 
