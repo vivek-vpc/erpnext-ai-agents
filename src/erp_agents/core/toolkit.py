@@ -19,7 +19,7 @@ import time
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
-from . import obs
+from . import metrics, obs
 from .common import Actor, untrusted
 
 log = logging.getLogger(__name__)
@@ -190,7 +190,9 @@ class Toolkit:
         if len(json.dumps(result, default=str)) > MAX_RESULT_CHARS:
             result = {"warning": "result shortened", **_shorten(result)}
         ms = int((time.monotonic() - t0) * 1000)
-        obs.event("tool_call", logging.INFO if error is None else logging.WARNING, tool=name if entry is not None else "unknown", via=via, ok=error is None, ms=ms, refused=refused)
+        shown = name if entry is not None else "unknown"
+        obs.event("tool_call", logging.INFO if error is None else logging.WARNING, tool=shown, via=via, ok=error is None, ms=ms, refused=refused)
+        metrics.record_tool(shown, via, error is None, refused, ms / 1000)
         if self.log_call is not None:
             try:
                 self.log_call(actor.id, via, name, args, error is None, ms, task_id, error)

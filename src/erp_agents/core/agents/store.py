@@ -74,6 +74,12 @@ class AgentLog:
         rows = self.db.query(sql + " ORDER BY started_at DESC, rowid DESC LIMIT ?", (*params, max(1, min(limit, 200))))
         return [self._row(r) for r in rows]
 
+    def metrics_snapshot(self) -> list[dict[str, Any]]:
+        """Tasks and tokens so far, by agent, kind of task, status, provider and model (core/metrics.py reads this when Prometheus asks)."""
+        rows = self.db.query("SELECT agent, task, status, COALESCE(provider, 'ollama') AS provider, COALESCE(model, '') AS model, COUNT(*) AS n, "
+                             "COALESCE(SUM(prompt_tokens), 0) AS tokens_in, COALESCE(SUM(output_tokens), 0) AS tokens_out FROM agent_tasks GROUP BY 1, 2, 3, 4, 5")
+        return [dict(r) for r in rows]
+
     def latest(self, agent: str, task: str, status: str = "ok") -> Optional[dict[str, Any]]:
         row = self.db.query_one("SELECT * FROM agent_tasks WHERE agent=? AND task=? AND status IN (?, 'fallback') ORDER BY started_at DESC, rowid DESC LIMIT 1", (agent, task, status))
         return self._row(row) if row else None

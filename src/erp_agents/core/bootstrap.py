@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
-from . import obs
+from . import metrics, obs
 from .audit import AuditChain
 from .history import DecisionHistory
 from .agents.service import AgentService
@@ -170,6 +170,7 @@ def build_app(
         app.audit.sweep()                          # what was closed before (or while the application was stopped) is sealed now
     except Exception:  # noqa: BLE001 - a seal that cannot be written must not stop the application; `history --verify` reports what is not sealed
         log.exception("could not seal the decision history")
+    metrics.attach(app)                            # recording and /metrics on or off, as `observability.metrics` says (off by default)
     return app
 
 

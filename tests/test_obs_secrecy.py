@@ -77,11 +77,13 @@ def logged(fmt="text"):
         handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
     else:
         handler = obs.make_handler(buf, fmt)
-    root.handlers, root.level = [handler], logging.DEBUG
+    root.handlers = [handler]
+    root.setLevel(logging.DEBUG)                             # setLevel, not an assignment: it also clears the loggers' cache of "is this level enabled"
     try:
         yield buf
     finally:
-        root.handlers, root.level = saved, level
+        root.handlers = saved
+        root.setLevel(level)
 
 
 def leaks(text):

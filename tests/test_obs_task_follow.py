@@ -43,11 +43,13 @@ def logged(fmt):
     root = logging.getLogger()
     saved, level = root.handlers[:], root.level
     buf = io.StringIO()
-    root.handlers, root.level = [obs.make_handler(buf, fmt)], logging.INFO
+    root.handlers = [obs.make_handler(buf, fmt)]
+    root.setLevel(logging.INFO)                              # setLevel, not an assignment: it also clears the loggers' cache of "is INFO enabled", which an earlier test may have filled
     try:
         yield buf
     finally:
-        root.handlers, root.level = saved, level
+        root.handlers = saved
+        root.setLevel(level)
 
 
 @pytest.fixture

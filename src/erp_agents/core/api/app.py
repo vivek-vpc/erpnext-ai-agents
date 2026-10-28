@@ -11,6 +11,7 @@ from __future__ import annotations
 import hmac
 import json
 import logging
+import os
 from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
 from types import SimpleNamespace
@@ -23,6 +24,7 @@ from pydantic import BaseModel, Field
 
 from ..approvals.inbound import process_inbound
 from ..auth.erpnext import LoginError, Verification
+from .. import metrics
 from ..acting import acting_as
 from ..bootstrap import App
 from ..common import Actor
@@ -218,6 +220,17 @@ def create_app(app_ctx: App, on_system_change=None, lifespan=None) -> FastAPI:
         except HTTPException:
             return {"ok": True}
         return {"ok": True, "erp_reachable": ctx.erp.healthcheck(), "channels": sorted(ctx.channels)}
+
+    # ------------------------------------------------------------------ metrics: not there at all unless `observability.metrics: true`
+    if ctx.observability is not None and ctx.observability.metrics:
+        @api.get("/metrics", include_in_schema=False)
+        def metrics_page(request: Request) -> PlainTextResponse:
+            """Prometheus text. Allowed with the scraper's own bearer token (ERP_AGENTS_METRICS_TOKEN, 24 characters or more) or an administrator's sign-in; nobody else."""
+            token, presented = os.environ.get(metrics.SCRAPER_ENV, "").strip(), bearer(request)
+            if not (len(token) >= MIN_KEY_LENGTH and presented and hmac.compare_digest(presented.encode(), token.encode())):
+                if not current_actor(request).has_role("admin"):         # a stranger is turned away first (401)
+                    raise HTTPException(403, "admin role required")
+            return PlainTextResponse(metrics.REGISTRY.render(), media_type=metrics.CONTENT_TYPE)
 
     # ------------------------------------------------------------------ packs
     @api.get("/api/v1/packs")

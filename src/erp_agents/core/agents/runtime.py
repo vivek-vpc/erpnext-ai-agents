@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Any, Callable, Optional
 
 import anyio
 
-from .. import obs
+from .. import metrics, obs
 from ..assistant.verify import HEDGES, _contains, numbers
 from .llm import LLMError, Reply, ToolChatClient, salvage_tool_call
 
@@ -213,8 +213,10 @@ class AgentRuntime:
                     out.status, out.data, out.problems = "ok", data, []
                     break
                 out.status, out.problems = "rejected", problems
+                metrics.GROUNDING_REJECTS.inc(agent=job.agent, task=job.task)
                 if attempt == 1 or out.steps >= self.max_steps:
                     break
+                metrics.GROUNDING_REPAIRS.inc(agent=job.agent, task=job.task)
                 messages += [{"role": "assistant", "content": reply.content},
                              {"role": "user", "content": "Your answer was rejected: " + "; ".join(problems[:4]) + ". Fix exactly that and reply again in the same JSON format, "
                                                          "using only numbers and codes that appear in the tool results."}]
@@ -233,9 +235,13 @@ class AgentRuntime:
         try:
             reply = await anyio.to_thread.run_sync(lambda: self.llm.chat(messages, tools, schema))
         except LLMError as exc:                                          # the model could not be reached or did not reply: one line, the class of the failure, not its text
-            obs.event("llm_call", logging.WARNING, **who, ms=int((time.monotonic() - started) * 1000), outcome="error", error=type(exc).__name__)
+            seconds = time.monotonic() - started
+            obs.event("llm_call", logging.WARNING, **who, ms=int(seconds * 1000), outcome="error", error=type(exc).__name__)
+            metrics.record_llm(who["provider"], who["model"], kind, "error", seconds)
             raise
-        obs.event("llm_call", **who, ms=int((time.monotonic() - started) * 1000), tokens_in=reply.prompt_tokens, tokens_out=reply.output_tokens, outcome="ok")
+        seconds = time.monotonic() - started
+        obs.event("llm_call", **who, ms=int(seconds * 1000), tokens_in=reply.prompt_tokens, tokens_out=reply.output_tokens, outcome="ok")
+        metrics.record_llm(who["provider"], who["model"], kind, "ok", seconds, reply.prompt_tokens, reply.output_tokens)
         out.timings.append({"step": out.steps, "kind": kind, "seconds": round(reply.seconds, 1), "load": round(reply.load_seconds, 1), "reading_prompt": round(reply.prompt_seconds, 1),
                             "writing": round(reply.generate_seconds, 1), "prompt_tokens": reply.prompt_tokens, "output_tokens": reply.output_tokens})
         out.llm_seconds += reply.seconds

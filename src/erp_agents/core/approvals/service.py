@@ -9,6 +9,7 @@ Lifecycle: submit -> (delivered on N channels) -> decide | expire | cancel.
 from __future__ import annotations
 
 import logging
+import sqlite3
 import threading
 from dataclasses import dataclass
 from datetime import timedelta
@@ -162,6 +163,17 @@ class ApprovalService:
         else:
             rows = self.db.query("SELECT * FROM approvals ORDER BY created_at DESC LIMIT ?", (limit,))
         return [_row_to_record(r) for r in rows]
+
+    def metrics_snapshot(self) -> dict[str, Any]:
+        """What the monitoring reads (core/metrics.py): requests waiting and since when, closed requests by kind and how they ended, messages by channel and status."""
+        row = self.db.query_one("SELECT COUNT(*) AS n, MIN(created_at) AS oldest FROM approvals WHERE status='pending'")
+        try:
+            decisions = self.db.query("SELECT kind, COALESCE(NULLIF(json_extract(decision_json, '$.action'), ''), status) AS outcome, COUNT(*) AS n "
+                                      "FROM approvals WHERE status != 'pending' GROUP BY kind, outcome")
+        except sqlite3.OperationalError:                         # a SQLite built without its JSON functions: how they ended, without which answer was given
+            decisions = self.db.query("SELECT kind, status AS outcome, COUNT(*) AS n FROM approvals WHERE status != 'pending' GROUP BY kind, status")
+        deliveries = self.db.query("SELECT channel, status, COUNT(*) AS n FROM deliveries GROUP BY channel, status")
+        return {"pending": int(row["n"]), "oldest_pending": parse_dt(row["oldest"]), "decisions": [dict(r) for r in decisions], "deliveries": [dict(r) for r in deliveries]}
 
     # ---------------------------------------------------------------- decide
     def decide(self, approval_id: str, action: str, actor: Actor, channel: str,

@@ -20,7 +20,7 @@ from zoneinfo import ZoneInfo
 
 from pydantic import ValidationError
 
-from .. import obs
+from .. import metrics, obs
 from ..common import Actor
 from ..netguard import blocked_target
 from ..policy import AGENT_PROVIDERS, PROVIDER_LABELS, PROVIDER_MODELS, PROVIDER_URLS, AgentSettings
@@ -244,6 +244,7 @@ class AgentService:
                 log.exception("the plain-rules fallback failed")
                 result = {"error": f"{type(exc).__name__}"}
             status, source = ("fallback" if outcome.note != "busy" else "failed"), "rules"
+            metrics.FALLBACKS.inc(agent=plan.job.agent, task=plan.job.task, reason="busy" if outcome.note == "busy" else ("rejected" if outcome.status == "rejected" else "unavailable"))
         note = outcome.note or "; ".join(outcome.problems)
         stored = {**result, "source": source}
         if outcome.prompt_tokens or outcome.output_tokens:                       # kept with the result, so whoever polls the task can show what it cost
