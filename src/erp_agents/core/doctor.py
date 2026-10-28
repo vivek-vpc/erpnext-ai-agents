@@ -3,6 +3,10 @@
 It looks at THIS machine's files and settings only: it makes no network call (not to ERPNext, WhatsApp, Telegram or anything else), changes nothing, and never prints a secret.
 Each finding says what was seen and, where there is one, the command that fixes it, as text for the owner to run: the doctor does not change permissions or settings itself.
 
+It also looks at how the installation is RUNNING, from the database file alone (opened so that it cannot be written, and fine while the application is up): whether the scheduler's
+heartbeat is current, whether a scheduled job failed its last run, free disk, a record dated in the future (the clock), requests that wait longer than `observability.pending_hours`,
+and the seal over the decision history. The live view (is ERPNext slow, how late the scheduler runs) is in the metrics, docs/OBSERVABILITY.md.
+
 What it cannot see, and says so: whether the ERPNext service account holds more roles than it needs (that needs ERPNext: run `erp-agents erp-check-access`), and anything outside
 this computer (the firewall, the tunnel, ERPNext's own exposure).
 """
@@ -10,15 +14,22 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
+import sqlite3
 import subprocess  # nosec B404 - used once, to read a file's access list with icacls on Windows
 import sys
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
+from . import obs
 from .api.hardening import ACCESS_KEY_MODES, MIN_KEY_LENGTH, access_key_mode, demo_key_problem, weak_key, well_known_key_users
+from .audit import AuditChain
+from .common import parse_dt
 from .config import HASH_KEY_ENV, hash_key_state
+from .jobs import HEARTBEAT_STALE_MINUTES, MAINTENANCE_JOB
 from .ops import AlreadyRunning, InstanceLock, verify_database
 from .storage import SCHEMA_VERSION
 
@@ -29,6 +40,10 @@ BROAD = ("everyone", "builtin\\users", "nt authority\\authenticated users", "use
 READ_RIGHTS = {"F", "M", "RX", "R", "GR", "GA", "RD", "REA"}
 WRITE_RIGHTS = {"F", "M", "W", "GW", "GA", "WD", "AD", "WEA"}
 BACKUP_STALE_DAYS = 7
+DISK_FAIL_MB, DISK_WARN_MB = 50, 500            # free space beside the database: below the first the next write is likely to fail, below the second (or three times the database) it is time to act
+CLOCK_TOLERANCE_MINUTES = 5                     # a record dated further ahead than this means the computer's clock is wrong (or was set back)
+# every date the core tables hold, to find the newest one
+CLOCK_COLUMNS = (("approvals", "created_at"), ("approvals", "decided_at"), ("audit_chain", "at"), ("settings_audit", "ts"), ("job_runs", "last_start"), ("job_runs", "last_end"))
 
 
 @dataclass
@@ -297,6 +312,163 @@ def check_erp_account(cfg: dict[str, Any]) -> list[Check]:
                   "run erp-agents erp-check-access (read-only): it lists the roles the account holds and the surplus ones to remove")]
 
 
+# ---------------------------------------------------------------------------------------------------------------------- how it is running
+# Read from the database file alone (opened so that it cannot be written, and fine while the application is running): the scheduler's heartbeat, the free disk, the clock,
+# the requests that wait for an answer, and the seal over the decision history. No network call.
+class _ReadOnlyDb:
+    """Just enough of `Database` for AuditChain.verify() and the queries below, over a connection that cannot write."""
+
+    def __init__(self, db_path: str) -> None:
+        self.conn = sqlite3.connect(f"file:{Path(db_path).as_posix()}?mode=ro", uri=True, timeout=5)
+        self.conn.row_factory = sqlite3.Row
+
+    def query(self, sql: str, params: tuple = ()) -> list[sqlite3.Row]:
+        return self.conn.execute(sql, params).fetchall()
+
+    def query_one(self, sql: str, params: tuple = ()) -> Optional[sqlite3.Row]:
+        return self.conn.execute(sql, params).fetchone()
+
+    def tables(self) -> set[str]:
+        return {r["name"] for r in self.query("SELECT name FROM sqlite_master WHERE type='table'")}
+
+    def close(self) -> None:
+        self.conn.close()
+
+
+def _ago(delta_minutes: float) -> str:
+    minutes = abs(delta_minutes)
+    if minutes < 90:
+        return f"{minutes:.0f} minute(s)"
+    if minutes < 48 * 60:
+        return f"{minutes / 60:.0f} hour(s)"
+    return f"{minutes / 1440:.0f} day(s)"
+
+
+def _pending_hours(cfg: dict[str, Any]) -> float:
+    try:
+        return obs.settings_from(cfg).pending_hours
+    except ValueError:                           # the start-up check reports a bad value; here the default will do
+        return obs.ObsSettings().pending_hours
+
+
+def _running_since(db_path: str) -> Optional[datetime]:
+    """When the instance that holds this database started (the lock file is written then), or None when no instance is running."""
+    try:
+        with InstanceLock(db_path):
+            return None
+    except AlreadyRunning:
+        try:
+            return datetime.fromtimestamp(Path(f"{db_path}.lock").stat().st_mtime, timezone.utc)
+        except OSError:
+            return datetime.now(timezone.utc)
+    except OSError:
+        return None
+
+
+def check_disk(db_path: str) -> list[Check]:
+    db = Path(db_path)
+    try:
+        free_mb, size_mb = shutil.disk_usage(db.parent).free / 1048576, db.stat().st_size / 1048576
+    except OSError as exc:
+        return [Check("Disk", INFO, "could not read the free disk space", type(exc).__name__)]
+    detail = f"{free_mb:,.0f} MB free beside the database; the database is {size_mb:,.1f} MB and a backup needs about that much again"
+    fix = "free space on that drive, or move the data folder to a bigger one (database.path). A full disk makes the database refuse every write, and /ready then answers 503."
+    if free_mb < DISK_FAIL_MB:
+        return [Check("Disk", FAIL, "the disk is nearly full", detail, fix)]
+    if free_mb < max(DISK_WARN_MB, 3 * size_mb):
+        return [Check("Disk", WARN, "the disk is getting full", detail, fix)]
+    return [Check("Disk", OK, "there is room on the disk", detail)]
+
+
+def check_scheduler(db: _ReadOnlyDb, tables: set[str], db_path: str, when: datetime) -> list[Check]:
+    if "job_runs" not in tables:
+        return []                                # a database from before schema 2: nothing recorded yet (it is upgraded on the next start)
+    out: list[Check] = []
+    started = _running_since(db_path)
+    if started is not None:
+        row = db.query_one("SELECT last_start, last_end FROM job_runs WHERE job=?", (MAINTENANCE_JOB,))
+        runs = [t for t in (parse_dt(row["last_end"]), parse_dt(row["last_start"])) if t] if row else []
+        last = max(runs) if runs else None
+        ran_since_start = last is not None and last >= started
+        minutes = (when - (last if ran_since_start else started)).total_seconds() / 60       # a run before this instance started was another process's: the quiet is counted from the start
+        if minutes > HEARTBEAT_STALE_MINUTES:
+            out.append(Check("Scheduler", WARN, "an instance is running, but its scheduler has gone quiet",
+                             f"the maintenance job (every 10 minutes) has not run for {_ago(minutes)}, so the daily checks, the reminders and the expiry of old requests are not happening",
+                             "look in the log for 'approval maintenance failed', then restart the application"))
+        else:
+            out.append(Check("Scheduler", OK, "the scheduler is alive", f"the maintenance job last ran {_ago(minutes)} ago" if ran_since_start
+                             else f"the instance started {_ago(minutes)} ago; the maintenance job has not come round yet"))
+    failing = [r for r in db.query("SELECT job, runs, failures, last_error FROM job_runs WHERE last_ok=0 ORDER BY job")]
+    if failing:
+        out.append(Check("Scheduler", WARN, "a scheduled job failed the last time it ran: " + ", ".join(r["job"] for r in failing[:6]),
+                         "; ".join(f"{r['job']}: {r['failures']} failure(s) in {r['runs']} run(s), the last '{r['last_error'] or 'failed'}'" for r in failing[:6]),
+                         "the log has a line event=job_run for each run and the error just before it"))
+    return out
+
+
+def check_backlog(db: _ReadOnlyDb, tables: set[str], when: datetime, limit_hours: float) -> list[Check]:
+    if "approvals" not in tables:
+        return []
+    row = db.query_one("SELECT COUNT(*) AS n, MIN(created_at) AS oldest FROM approvals WHERE status='pending'")
+    if not row or not row["n"]:
+        return [Check("Approvals", OK, "no request is waiting for an answer")]
+    oldest = parse_dt(row["oldest"])
+    hours = (when - oldest).total_seconds() / 3600 if oldest else 0.0
+    detail = f"{row['n']} waiting; the oldest for {_ago(hours * 60)}; the limit is {limit_hours:g} hour(s) (observability.pending_hours)"
+    if hours > limit_hours:
+        return [Check("Approvals", WARN, "a request has waited longer than it should", detail,
+                      "answer or dismiss it in the console (Requests), and check that the approvers receive the messages (a failed delivery is shown there)")]
+    return [Check("Approvals", OK, f"{row['n']} request(s) waiting, none for too long", detail)]
+
+
+def check_clock(db: _ReadOnlyDb, tables: set[str], when: datetime) -> list[Check]:
+    newest: Optional[datetime] = None
+    for table, column in CLOCK_COLUMNS:
+        if table in tables:
+            row = db.query_one(f"SELECT MAX({column}) AS m FROM {table}")  # nosec B608 - names from the constant above, no input
+            found = parse_dt(row["m"]) if row and row["m"] else None
+            if found and (newest is None or found > newest):
+                newest = found
+    if newest is None:
+        return []
+    ahead = (newest - when).total_seconds() / 60
+    if ahead > CLOCK_TOLERANCE_MINUTES:
+        return [Check("Clock", WARN, "a record in the database is dated in the future", f"the newest is {_ago(ahead)} ahead of this computer's clock, so the clock is wrong or was set back",
+                      "set the date, time and time zone right and turn on automatic time (Windows: Settings > Time & language > Date & time > Sync now). Reminders and expiry follow this clock.")]
+    return [Check("Clock", OK, "no record is dated in the future", "judged from the database's own dates; ERPNext's time is a metric (erp_agents_erpnext_clock_skew_seconds), not asked here")]
+
+
+def check_history(db: _ReadOnlyDb, tables: set[str]) -> list[Check]:
+    if "audit_chain" not in tables:
+        return []
+    result = AuditChain(db).verify()                                           # type: ignore[arg-type]  # only query() and query_one() are used: read-only
+    if result["ok"]:
+        waiting = f"; {result['not_sealed_yet']} closed request(s) are sealed the next time the application runs" if result["not_sealed_yet"] else ""
+        return [Check("Decision history", OK, "the seal over the decision history is intact", f"{result['entries']} sealed entries{waiting}")]
+    return [Check("Decision history", FAIL, "the decision history does not verify", "; ".join(result["problems"][:3]),
+                  "a request or a settings change was edited or deleted after it was sealed. `erp-agents history --verify` lists them all. If you did not do it, restore the last "
+                  "backup you trust (erp-agents restore <file> --force, with the application stopped)")]
+
+
+def check_operation(cfg: dict[str, Any], db_path: str, now: float) -> list[Check]:
+    if db_path == ":memory:" or not Path(db_path).is_file():
+        return []
+    when = datetime.fromtimestamp(now, timezone.utc)
+    out = check_disk(db_path)
+    try:
+        db = _ReadOnlyDb(db_path)
+    except sqlite3.Error as exc:
+        return out + [Check("Operation", INFO, "the database could not be opened to see how it is running", type(exc).__name__)]
+    try:
+        tables = db.tables()
+        out += check_scheduler(db, tables, db_path, when) + check_backlog(db, tables, when, _pending_hours(cfg)) + check_clock(db, tables, when) + check_history(db, tables)
+    except (sqlite3.Error, ValueError) as exc:                               # damage is reported by the database check above; this one must not stop the rest
+        out.append(Check("Operation", INFO, "part of the database could not be read", f"{type(exc).__name__}: {str(exc)[:80]}"))
+    finally:
+        db.close()
+    return out
+
+
 # ---------------------------------------------------------------------------------------------------------------------- run and show
 def env_file_for(config_path: Optional[Path]) -> Optional[Path]:
     """The .env the application reads: the project root next to config/, else the current directory (as config.load_config does)."""
@@ -310,7 +482,8 @@ def run_doctor(cfg: dict[str, Any], config_path: Optional[str] = None, now: Opti
     db_path = str((cfg.get("database") or {}).get("path", "./data/erp_agents.db"))
     checks: list[Check] = []
     checks += check_access(cfg) + check_network(cfg) + check_secrets_in_files(cp) + check_hash_key(cfg) + check_files(cp, env_file_for(cp), db_path)
-    checks += check_database(db_path, time.time() if now is None else now) + check_approvers(cfg) + check_erp_account(cfg)
+    when = time.time() if now is None else now
+    checks += check_database(db_path, when) + check_operation(cfg, db_path, when) + check_approvers(cfg) + check_erp_account(cfg)
     return checks
 
 

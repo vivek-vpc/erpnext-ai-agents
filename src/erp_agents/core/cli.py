@@ -477,7 +477,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--limit", type=int, default=15, help="tasks: how many; usage: how many days back")
     s.set_defaults(fn=cmd_agents)
 
-    s = sub.add_parser("doctor", help="read-only check of this installation: file permissions, exposure, settings, database, backups (no network)")
+    s = sub.add_parser("doctor", help="read-only check of this installation: file permissions, exposure, settings, database, backups, and how it is running (scheduler, disk, clock, waiting requests, decision history; no network)")
     s.add_argument("--strict", action="store_true", help="exit with an error for warnings too, not only for things to fix now")
     s.set_defaults(fn=cmd_doctor)
 
