@@ -70,7 +70,7 @@ cases:
     expect:
       status: answered
       outcome: accepted
-      must_include: ["300", "7.3"]
+      must_include: ["7.3"]
 
   - id: history-why-the-model-invents-a-number
     group: decision_history

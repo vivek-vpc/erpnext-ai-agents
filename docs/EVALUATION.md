@@ -134,16 +134,34 @@ Eight of the cases make sense against a real model (the agent's answers, the che
 
 `--record DIR` writes what the model said, reply by reply, as a case with an `llm:` script. Read what it answered, correct the expectations, and it becomes a golden case that CI replays without the model.
 
+## The first run on real models (28 Oct 2026)
+
+The eight live cases on the author's laptop (Intel Core i3-1215U, no GPU), Ollama, `python -m tools.e2e.agents_eval --suite golden --model llama3.1 --against llama3`. It took about 30 minutes; llama3.1 needed 24 of them.
+
+| | llama3.1 | llama3 |
+|---|---:|---:|
+| Right answers | 5 of 8 | 2 of 8 |
+| Reply accepted at once / repaired / rules' answer used | 4 / 2 / 0 | 2 / 0 / 1 |
+| Said the data does not answer | 2 | 0 |
+| Model unreachable | 0 | 5 |
+| Tokens (in / out) | 13,183 / 396 | 0 / 0 |
+
+* **llama3 cannot call tools** (Ollama answers that the model does not support them), so every agent case ended with "The AI assistant is not available just now." The application handled it as designed (the person is told, nothing is invented), and the table shows it. Use llama3.1 or another model that supports tools.
+* **llama3.1 misses came in three kinds.** The alert question was answered correctly without the stock figure (the case wanted one it does not need; the expectation is now only the days). The late-orders question was answered with just `PO-EXT-0001`, which the checks accept because it is a code a tool returned (a terse answer, not a wrong one). The vendor question is the real finding below.
+* **The checks let one wrong claim through.** "Which vendor is cheapest for BOLT-M8 for 500?" was answered "Prime Supplies is the cheapest vendor for BOLT-M8 for 500." After one repair the checks accepted it. It is not true: Budget Traders is cheaper (16,960 against 18,435 in total); Prime Supplies is the best-ranked, which is what the tool's `best` field says. The sentence contains no invented number and none of the words the checks treat as a calculation (`times`, `twice`, `more than` ...), so nothing caught it. Words that rank (cheapest, fastest, lowest, highest, best, most ...) are claims of the same kind and are not on that list yet. **Open**, see below.
+* The real transcripts (what each model said, reply by reply) were recorded with `--record`; they are not shipped.
+
 ## What the suite has found
 
 1. **The chat decided what is overdue with the computer's date, not the application's** (fixed, `99e2c11`). With the application's date at 16 Oct and the computer's at 28 Oct, an order due on 22 Oct was listed as overdue. Every other answer already used the application's clock and time zone.
 2. **A question about an item that does not exist was answered with the overview of all stock** (fixed). "How much NOPE-99 do we have?" never said that NOPE-99 is unknown; it now says "I could not find an item with the code NOPE-99", and the same for a vendor comparison. Anything written like an item code (letters, a hyphen, a digit) that is no item and no document number counts.
 3. **"Which vendor is best for GASKET-X?" went to the vendor scorecard** (fixed), which ranks all vendors on delivery history and ignored the item. With an item named it is now a comparison for that item; asking for the scorecard, a ranking, performance, on-time delivery or a rating keeps the scorecard.
-4. In the suite itself: two bad replies were being rejected for the wrong reason (a comma in an unquoted value split a scripted reply in two), found by breaking the grounding check on purpose; `rejected_because` and the loading check now prevent that.
+4. **A wrong superlative is accepted** (open, found by the first real-model run above): "Prime Supplies is the cheapest vendor" when another vendor is cheaper. The check that rejects a calculation or comparison of the model's own does not list ranking words. A fix is small (add them to the list, allowed only when a tool's result uses the word), makes the checks stricter, and has not been made because it changes what users see; a case that scripts the reply will pin it.
+5. In the suite itself: two bad replies were being rejected for the wrong reason (a comma in an unquoted value split a scripted reply in two), found by breaking the grounding check on purpose; `rejected_because` and the loading check now prevent that.
 
 ## Limits of this evaluation
 
 - The stand-in model is a script: it shows that the checks catch what they should, not how often a real model would err.
 - The world is small: ten items and three vendors each, one company, one currency. Questions about data the demo ERP does not hold (receipts as documents, several warehouses beyond a few cases) are not covered.
 - The rules' wording (what counts as a question about stock, vendors or documents) is tested on the questions in the cases. A phrasing nobody wrote down may still be misplaced; add it as a case when you find it.
-- The live comparison has not been run here against a real Ollama or hosted model; it is tested with stand-ins. The first real comparison needs your machine or your key.
+- The live comparison has been run once on real models (Ollama, llama3.1 and llama3, above); a hosted model has not been tried here because it needs a key.
