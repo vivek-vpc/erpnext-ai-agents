@@ -16,19 +16,18 @@ It runs on a laptop or a small VPS and needs only open-source software (Python, 
 
 ### How it fits together
 
-![Architecture: people and channels, gateway, six agents, MCP layer with 15 tools, human approval gate, ERPNext, vendors and audit log](docs/img/architecture.png)
+![Architecture: people and channels, gateway, six agents, MCP layer with the tools, human approval gate, ERPNext, vendors and audit log](docs/img/architecture.png)
 
 > **Status: beta. Licence: GPL-3.0-or-later.**
 >
-> - 1,282 passed and 1 skipped (a POSIX-only permission test) on Windows with Python 3.14, 25 Oct 2026, run against a demo ERP and fake transports (`python -m pytest`), plus `bandit` and `pip-audit`, which report nothing.
+> - 1,475 passed and 1 skipped (a POSIX-only permission test) on Windows with Python 3.14, 28 Oct 2026, run against a demo ERP and fake transports (`python -m pytest`), plus `bandit` and `pip-audit`, which report nothing.
 > - Checked live against an **ERPNext v16** test instance: reads, vendor comparison with duties and taxes, sign-in through ERPNext, permissions, and creation of a
 >   draft Purchase Order and Material Request ([docs/E2E_TEST_RESULTS.md](docs/E2E_TEST_RESULTS.md) lists every case and what passed, failed or was not run).
 >   Other ERPNext versions have not been tried.
 > - **Telegram and WhatsApp**: the automated tests use fake transports. Messages have been delivered live on the author's own accounts. **WhatsApp has not been
 >   tried against Meta's sandbox by anyone else**: expect to adjust the message template and buttons.
 > - **One process only.** SQLite and the in-process scheduler do not support several copies running at once: `serve` takes a lock on the database and a second copy
->   refuses to start. The database carries a schema version (a newer file is refused untouched; an older one is copied aside, then upgraded; no migration has been
->   needed yet). `erp-agents backup` / `restore` / `doctor` are described in section 7c.
+>   refuses to start. The database carries a schema version (a newer file is refused untouched; an older one is copied aside, then upgraded; the core's own tables have needed none yet; the stock pack's tables are at version 4, whose migration adds columns to two existing tables and is tested on a real version-3 file). `erp-agents backup` / `restore` / `doctor` are described in section 7c.
 > - **This is a standalone Python service (FastAPI + SQLite). It is not a Frappe app and is not on the Frappe Marketplace**, and cannot be installed from it. A Frappe app
 >   would be a separate port that reuses the business logic and replaces the edges: nothing of it is started. What it would take: [docs/FRAPPE_APP_PLAN.md](docs/FRAPPE_APP_PLAN.md),
 >   [docs/PUBLISHING_PLAN.md](docs/PUBLISHING_PLAN.md) and [docs/DEVELOPING.md](docs/DEVELOPING.md).
@@ -291,6 +290,22 @@ So the same problem is not announced over and over:
 
 Switch it off with `system.stock_alerts: false` (Settings, Reminders): the first message is then the reorder request itself, as before.
 `erp-agents run-once --dry-run` reports the alerts it would send.
+
+### 4e. What the assistant writes to ERPNext
+
+Everything else it does in ERPNext is reading. It writes only the documents below, only after a person presses a button, and it never submits one.
+
+<!-- erp-writes -->
+| Document | What it writes | Through which tool and button |
+|---|---|---|
+| `Purchase Order` | A **draft**, with the approver recorded. Afterwards, only on an order it created itself (found by its reference): change the quantity, delete the draft, or cancel the submitted order | `prepare_order_request`, then **Create order**; later **Change quantity** and **Cancel order** (or the same words typed in a chat) |
+| `Material Request` | A **draft** purchase requisition, for the items and groups you chose to requisition first, or when a person picks "Create a requisition instead" | `prepare_order_request`, then **Create a requisition instead** |
+| `Stock Entry` | A **draft** of type Material Transfer. No stock moves until someone submits it in ERPNext | `prepare_stock_transfer`, then **Create transfer** |
+| `Communication` | An e-mail to a supplier through ERPNext's own outgoing mail (recorded on the document there), only after a person presses Send | The late-delivery reminder and `prepare_quote_request`, then **Send reminder** / **Send requests** |
+| `Custom Field` | Two fields, a reference and the approver's name, on Purchase Order, Material Request and Stock Entry, once | `erp-agents erp-setup`, an administrator's command (not a tool) |
+<!-- /erp-writes -->
+
+Never written: a submitted document of any kind (a person submits in ERPNext), Supplier Quotations, Purchase Receipts, Purchase Invoices, payments, items, suppliers, stock counts or ERPNext settings. The assistant's own settings and records live in its own database. [tests/test_docs_match_code.py](tests/test_docs_match_code.py) compares this table with the pack manifest and the ERPNext client, so a new kind of write cannot ship without being listed here.
 
 ## 5. Approval channels
 
@@ -632,7 +647,7 @@ The two out-of-stock materials and the paint will raise stock alerts at the next
 
 ## 8f. AI agents and the MCP server (optional)
 
-Two agents sit on top of the rules, using the same seven tools that an MCP server publishes to any AI client (Claude Desktop and others):
+Two agents sit on top of the rules, using the same tools that an MCP server publishes to any AI client (Claude Desktop and others), <!-- tools:counts -->17 tools: 14 read-only and 3 prepare-only<!-- /tools:counts -->:
 
 - the **inventory agent** writes the morning brief (what needs attention, in what order, anything odd);
 - the **purchasing agent** gives a second opinion on an order request and answers the questions the Ask page cannot place.
@@ -731,6 +746,8 @@ cannot reach (an e-mail to yourself, a note in ERPNext).
 
 ## 9. Known limitations / next steps
 
+The short list of what the project does not do, and how each part was tested, is [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md). The rest:
+
 - Vendor prices are the latest order rate in company currency (the order's base rate, so foreign and domestic vendors
   compare fairly) or, if you switch it on, the vendor's valid supplier quotation (see "Supplier quotations"). Price lists are not read. A vendor with no past
   order and no quotation for the item cannot be priced.
@@ -744,7 +761,7 @@ cannot reach (an e-mail to yourself, a note in ERPNext).
 - Usage is derived from outgoing movements; it does not know about planned promotions or one-off
   bulk orders (the "busy week" line and confidence notes flag lumpy demand, but they do not remove it).
 - ERPNext adapter: tested against v16 only. PO arrival dates come from `schedule_date`.
-- Single instance: SQLite and the in-process scheduler do not support several replicas (a second `serve` is refused). Schema versioning and the migration mechanism exist, but no migration has been written yet, so the upgrade path has been tested with test migrations only.
+- Single instance: SQLite and the in-process scheduler do not support several replicas (a second `serve` is refused). Schema versioning and numbered migrations exist (the core's own tables have needed none yet; the stock pack's tables are at version 4, whose migration adds columns to two existing tables and is tested on a real version-3 file).
 - Chat approvers are identified by the address in `settings.yaml` and are not re-checked against ERPNext at reply time.
 - WhatsApp: only delivered live on the author's own account; see the status note at the top.
 - Licence: GPL-3.0-or-later (see `LICENSE`), which the Frappe Cloud Marketplace accepts (open source under MIT or a GPL-compatible licence). That is a licence statement only: this repository is not a Frappe app and is not listed on the Marketplace.

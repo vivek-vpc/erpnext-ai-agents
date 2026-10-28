@@ -19,6 +19,8 @@ It assumes you run it behind your own network controls. Read [docs/PENTEST_REPOR
 
 ## Known properties and limits (read before you deploy)
 
+The wider list of what the project does not do is [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md).
+
 * **The decision history's seal shows changes, it does not prevent them.** `erp-agents history --verify` finds a request or settings change that was edited or deleted after it was sealed, and a break in the chain; someone with write access to the database file could rewrite the whole chain. Keep backups, and keep a copy of the latest hash elsewhere.
 
 - **TLS and HSTS belong to your proxy.** The application speaks plain HTTP and cannot see TLS itself. It adds `Strict-Transport-Security: max-age=31536000` only to answers for requests that the proxy marks as https (`X-Forwarded-Proto: https`, or Cloudflare's `CF-Visitor`), so that header is only as good as the proxy's forwarding of those. Set HSTS at the proxy for every response, including the ones this application never produces, and never expose the application's own port to the internet without a TLS proxy in front. The other browser protections (CSP, framing, referrer, content type, no caching of API answers) are always on.
@@ -30,7 +32,7 @@ It assumes you run it behind your own network controls. Read [docs/PENTEST_REPOR
 - **What an AI answer may contain.** Numbers come from the person's question or from the results of tool calls that succeeded, and from nowhere else. The arguments of a tool call never count, failed or not: a rejected call returned nothing, so a number typed into it is the model's own.
 - **Who may answer from a chat.** A WhatsApp or Telegram answer is trusted because it comes from the address written in the settings file (`approvals.recipients`) and carries the roles written there. It is **not** checked against ERPNext when it arrives: a person who leaves, or loses a role in ERPNext, keeps their authority in chat until they are removed from the file. Keep that list short, give chat recipients the approver role only (not admin), and review it when staff change. `erp-agents doctor` lists them.
 - **One instance only.** `serve` takes a lock on the database and a second copy refuses to start (the lock is dropped by the operating system if the process dies). SQLite and the in-process scheduler do not support several replicas.
-- **Backups and upgrades.** The database carries a schema version: a file made by a newer version is refused untouched, and an older one is copied aside and then upgraded by numbered migrations (none exist yet; the mechanism and its tests do). `erp-agents backup` makes a verified copy while the application runs, `backup-verify` checks one, `restore` puts one back (stop the application first; the replaced database is kept beside it). `.env` and the settings file are not in the database: copy them separately.
+- **Backups and upgrades.** The database carries a schema version: a file made by a newer version is refused untouched, and an older one is copied aside and then upgraded by numbered migrations (the core's own tables have needed none yet; the stock pack's tables are at version 4, whose migration adds columns to two existing tables and is tested on a real version-3 file). `erp-agents backup` makes a verified copy while the application runs, `backup-verify` checks one, `restore` puts one back (stop the application first; the replaced database is kept beside it). `.env` and the settings file are not in the database: copy them separately.
 
 ## Checking an installation
 
