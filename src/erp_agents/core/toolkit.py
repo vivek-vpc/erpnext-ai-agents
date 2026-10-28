@@ -19,7 +19,7 @@ import time
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
-from . import metrics, obs
+from . import metrics, obs, tracing
 from .common import Actor, untrusted
 
 log = logging.getLogger(__name__)
@@ -154,7 +154,7 @@ class Toolkit:
         """Run one tool. Never raises: a refusal or a failure comes back as {"error": "..."} so an agent can read it and carry on.
         The checks here apply to every pack and every way in: the tool exists, its pack is switched on, the caller's role allows it, the arguments fit.
         `task_id`: the agent task this call belongs to; everything logged while the call runs (the ERPNext requests the tool makes ...) carries it."""
-        with obs.bind(task_id=task_id):
+        with obs.bind(task_id=task_id), tracing.span("tool.call", via=via):
             return self._call(name, arguments, actor, via, task_id)
 
     def _call(self, name: str, arguments: Optional[dict[str, Any]], actor: Actor, via: str, task_id: Optional[str]) -> dict[str, Any]:
@@ -193,6 +193,9 @@ class Toolkit:
         shown = name if entry is not None else "unknown"
         obs.event("tool_call", logging.INFO if error is None else logging.WARNING, tool=shown, via=via, ok=error is None, ms=ms, refused=refused)
         metrics.record_tool(shown, via, error is None, refused, ms / 1000)
+        tracing.annotate(tool=shown, ok=error is None, refused=refused)
+        if error is not None:
+            tracing.mark_failed(refused or "error")
         if self.log_call is not None:
             try:
                 self.log_call(actor.id, via, name, args, error is None, ms, task_id, error)

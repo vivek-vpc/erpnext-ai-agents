@@ -23,12 +23,14 @@ import time
 import traceback
 import uuid
 from collections import deque
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable, Iterator, Optional, TextIO
 from urllib.parse import quote, unquote, urlsplit
+
+from . import tracing
 
 LOG_FORMATS = ("text", "json")
 LOG_FORMAT_ENV = "ERP_AGENTS_LOG_FORMAT"
@@ -302,7 +304,10 @@ def settings_from(cfg: dict[str, Any]) -> ObsSettings:
         raise ValueError("observability.pending_hours must be a number of hours") from None
     if not 0 < hours <= 24 * 365:
         raise ValueError("observability.pending_hours must be more than 0 and at most a year")
-    return ObsSettings(fmt, bool(raw.get("metrics", False)), bool(raw.get("tracing", False)), str(raw.get("otlp_endpoint") or "").strip(),
+    endpoint = str(raw.get("otlp_endpoint") or "").strip()
+    if endpoint and (urlsplit(endpoint).scheme not in ("http", "https") or not urlsplit(endpoint).netloc):
+        raise ValueError("observability.otlp_endpoint must be a web address that starts with http:// or https://, for example http://localhost:4318/v1/traces")
+    return ObsSettings(fmt, bool(raw.get("metrics", False)), bool(raw.get("tracing", False)), endpoint,
                        str(raw.get("service_name") or "erpnext-ai-agents").strip()[:80] or "erpnext-ai-agents", hours)
 
 
@@ -338,15 +343,22 @@ def observe_session(session: Any, target: str) -> Any:
     if not callable(original) or getattr(session, "_erp_agents_observed", False):
         return session
 
+    traced = target == "erpnext"                           # a model call is a span of its own already (llm.call); a request to ERPNext is a span below the tool call that made it
+
     def request(method: str, url: str, *args: Any, **kwargs: Any) -> Any:
         started, kind, verb = time.monotonic(), _kind_of(method, url), str(method).upper()
-        try:
-            response = original(method, url, *args, **kwargs)
-        except BaseException as exc:
-            _http_seen(target, kind, verb, None, time.monotonic() - started, type(exc).__name__, None)
-            raise
-        _http_seen(target, kind, verb, getattr(response, "status_code", None), time.monotonic() - started, None, getattr(response, "headers", None))
-        return response
+        with (tracing.span("erp.request", method=verb, kind=kind) if traced else nullcontext(tracing.OFF)) as sp:
+            try:
+                response = original(method, url, *args, **kwargs)
+            except BaseException as exc:
+                _http_seen(target, kind, verb, None, time.monotonic() - started, type(exc).__name__, None)
+                raise
+            status = getattr(response, "status_code", None)
+            _http_seen(target, kind, verb, status, time.monotonic() - started, None, getattr(response, "headers", None))
+            sp.set(status=status)
+            if isinstance(status, int) and status >= 500:
+                sp.fail(str(status))
+            return response
     session.request = request
     session._erp_agents_observed = True
     return session

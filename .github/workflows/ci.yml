@@ -22,7 +22,7 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev,agents]"
+          pip install -e ".[dev,agents,otel]"
       - name: Test
         run: python -m pytest -q
 
@@ -52,7 +52,7 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev,agents]"
+          pip install -e ".[dev,agents,otel]"
       - name: bandit (any finding fails the build; a justified exception carries a nosec comment that says why)
         run: python -m bandit -r src -q -x "src/erp_agents/packs/*/tests/*"
       - name: pip-audit (known vulnerabilities in the dependencies)

@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
-from . import metrics, obs
+from . import metrics, obs, tracing
 from .audit import AuditChain
 from .history import DecisionHistory
 from .jobs import JobLog
@@ -111,6 +111,10 @@ def build_app(
     except ValueError as exc:
         raise StartupRefused(str(exc)) from None
     obs.register_secrets_from_config(cfg)       # so that no log line, in any format, can carry a key, a token or a phone number that this configuration holds
+    try:
+        tracing.configure(observability.tracing, observability.otlp_endpoint, observability.service_name)       # off by default; on, it needs the `otel` extra and says so if it is missing
+    except tracing.TracingUnavailable as exc:
+        raise StartupRefused(str(exc)) from None
 
     path = db_path or cfg["database"]["path"]
     if path != ":memory:":

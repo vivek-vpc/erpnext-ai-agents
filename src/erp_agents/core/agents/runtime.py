@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Any, Callable, Optional
 
 import anyio
 
-from .. import metrics, obs
+from .. import metrics, obs, tracing
 from ..assistant.verify import HEDGES, _contains, numbers
 from .llm import LLMError, Reply, ToolChatClient, salvage_tool_call
 
@@ -232,13 +232,16 @@ class AgentRuntime:
         out.steps += 1
         started = time.monotonic()
         who = {"provider": getattr(self.llm, "provider", None), "model": getattr(self.llm, "model", None), "kind": kind}
-        try:
-            reply = await anyio.to_thread.run_sync(lambda: self.llm.chat(messages, tools, schema))
-        except LLMError as exc:                                          # the model could not be reached or did not reply: one line, the class of the failure, not its text
-            seconds = time.monotonic() - started
-            obs.event("llm_call", logging.WARNING, **who, ms=int(seconds * 1000), outcome="error", error=type(exc).__name__)
-            metrics.record_llm(who["provider"], who["model"], kind, "error", seconds)
-            raise
+        with tracing.span("llm.call", **who) as sp:
+            try:
+                reply = await anyio.to_thread.run_sync(lambda: self.llm.chat(messages, tools, schema))
+            except LLMError as exc:                                      # the model could not be reached or did not reply: one line, the class of the failure, not its text
+                seconds = time.monotonic() - started
+                obs.event("llm_call", logging.WARNING, **who, ms=int(seconds * 1000), outcome="error", error=type(exc).__name__)
+                metrics.record_llm(who["provider"], who["model"], kind, "error", seconds)
+                sp.set(outcome="error")
+                raise
+            sp.set(outcome="ok", tokens_in=reply.prompt_tokens, tokens_out=reply.output_tokens)
         seconds = time.monotonic() - started
         obs.event("llm_call", **who, ms=int(seconds * 1000), tokens_in=reply.prompt_tokens, tokens_out=reply.output_tokens, outcome="ok")
         metrics.record_llm(who["provider"], who["model"], kind, "ok", seconds, reply.prompt_tokens, reply.output_tokens)

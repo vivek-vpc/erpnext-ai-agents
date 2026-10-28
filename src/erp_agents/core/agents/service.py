@@ -20,7 +20,7 @@ from zoneinfo import ZoneInfo
 
 from pydantic import ValidationError
 
-from .. import metrics, obs
+from .. import metrics, obs, tracing
 from ..common import Actor
 from ..netguard import blocked_target
 from ..policy import AGENT_PROVIDERS, PROVIDER_LABELS, PROVIDER_MODELS, PROVIDER_URLS, AgentSettings
@@ -203,9 +203,11 @@ class AgentService:
 
     def _complete(self, task_id: str, plan: Plan, wait: float) -> dict[str, Any]:
         """Run the task and record it. Everything logged from here on, in this thread and in the ones it starts (the tool calls, the model calls, the ERPNext requests), carries the task's id."""
-        with obs.bind(task_id=task_id):
+        with obs.bind(task_id=task_id), tracing.span("agent.task", agent=plan.job.agent, task=plan.job.task, task_id=task_id) as sp:
             obs.event("agent_task_start", agent=plan.job.agent, task=plan.job.task)
-            return self._complete_bound(task_id, plan, wait)
+            result = self._complete_bound(task_id, plan, wait)
+            sp.set(status=result.get("status"), source=result.get("source"))
+            return result
 
     def _complete_bound(self, task_id: str, plan: Plan, wait: float) -> dict[str, Any]:
         cfg = self.settings
