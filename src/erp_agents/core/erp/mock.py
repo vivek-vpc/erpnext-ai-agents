@@ -12,7 +12,7 @@ from typing import Callable, Optional, Sequence, Any
 
 from dataclasses import replace
 
-from .base import (CountLine, DailyUsage, ItemInfo, MessageResult, PurchaseOrderDraft, PurchaseOrderResult, QuoteRule, ReceiptLine, RequisitionDraft, SalesDue, StockInfo,
+from .base import (CountLine, DailyUsage, FoundDocument, ItemInfo, MessageResult, PurchaseOrderDraft, PurchaseOrderResult, QuoteRule, ReceiptLine, RequisitionDraft, SalesDue, StockInfo,
                    StockTransferDraft, SupplierContact, TaxSetup, VendorOffer, WarehouseStock)
 
 HISTORY_DAYS = 480
@@ -180,6 +180,14 @@ class MockERP:
                         "per_received": d.get("per_received", 0.0), "per_billed": d.get("per_billed", 0.0), "total": None, "currency": None, "kind": "Purchase" if doctype == "Material Request" else None,
                         "lines": [{"item_code": d.get("item_code"), "item_name": d.get("item_code"), "qty": d.get("qty"), "uom": d.get("uom"), "done_qty": float(d.get("received_qty") or 0.0)}]})
         return out[:limit]
+
+    def find_by_reference(self, doctype: str, reference: str) -> Optional[FoundDocument]:
+        """Like the real client: the not-cancelled document made for this reference, with the approver written on it."""
+        rows = {"Purchase Order": self.purchase_orders, "Material Request": self.requisitions, "Stock Entry": self.stock_transfers}.get(doctype, [])
+        for d in rows:
+            if reference and d.get("reference") == reference and d.get("docstatus", 0) < 2:
+                return FoundDocument(doctype, d["name"], d.get("approved_by") or "")
+        return None
 
     def create_material_request(self, draft: RequisitionDraft, acting: Any = None) -> PurchaseOrderResult:
         if self.fail_purchase_orders:

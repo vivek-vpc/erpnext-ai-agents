@@ -45,7 +45,7 @@ from urllib.parse import quote
 from .. import obs
 from ..httpguard import guard_session
 from ..netguard import no_redirects
-from .base import (STOCK_COLUMNS, CountLine, DailyUsage, ItemInfo, MessageResult, PurchaseOrderDraft, PurchaseOrderResult, QuoteRule, ReceiptLine, RequisitionDraft, SalesDue,
+from .base import (STOCK_COLUMNS, CountLine, DailyUsage, FoundDocument, ItemInfo, MessageResult, PurchaseOrderDraft, PurchaseOrderResult, QuoteRule, ReceiptLine, RequisitionDraft, SalesDue,
                    StockInfo, StockTransferDraft, SupplierContact, TaxRow, TaxSetup, VendorOffer, WarehouseStock)
 
 log = logging.getLogger(__name__)
@@ -1082,7 +1082,11 @@ class ERPNextClient:
         raise ERPNextError(f"could not check for the {doctype} field {fieldname}: HTTP {resp.status_code} {resp.text[:120]}")
 
     def _existing_doc(self, doctype: str, reference: str) -> Optional[str]:
-        """The not-cancelled document already created for this proposal, if any. Refuses (ERPNextError) when its fields have not been set up."""
+        found = self.find_by_reference(doctype, reference)
+        return found.name if found else None
+
+    def find_by_reference(self, doctype: str, reference: str) -> Optional[FoundDocument]:
+        """The not-cancelled document already created for this proposal, if any, with the approver written on it. Refuses (ERPNextError) when its fields have not been set up."""
         ok = getattr(self, "_fields_ok", None)
         if ok is None:
             ok = self._fields_ok = set()
@@ -1091,8 +1095,8 @@ class ERPNextClient:
                 raise ERPNextError(f"the {doctype} fields '{PO_REF_LABEL}' and '{PO_APPROVER_LABEL}' do not exist in ERPNext yet, so duplicates could not "
                                    "be prevented and the approver could not be recorded. Run: erp-agents erp-setup")
             ok.add(doctype)
-        rows = self._list(doctype, ["name"], [[PO_REF_FIELD, "=", reference], ["docstatus", "<", 2]])
-        return rows[0]["name"] if rows else None
+        rows = self._list(doctype, ["name", PO_APPROVER_FIELD], [[PO_REF_FIELD, "=", reference], ["docstatus", "<", 2]])
+        return FoundDocument(doctype, rows[0]["name"], str(rows[0].get(PO_APPROVER_FIELD) or "")) if rows else None
 
     def _company_currency(self) -> str:
         if not hasattr(self, "_ccy_cache"):

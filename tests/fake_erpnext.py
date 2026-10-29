@@ -123,3 +123,6 @@ class HybridERP(MockERP):
 
     def create_stock_transfer(self, draft, acting=None):  # noqa: ANN001
         return self.client.create_stock_transfer(draft, acting)
+
+    def find_by_reference(self, doctype, reference):  # noqa: ANN001
+        return self.client.find_by_reference(doctype, reference)

@@ -16,7 +16,8 @@ from datetime import timedelta
 from typing import Any, Callable, Optional
 
 from .. import obs
-from ..common import Actor, Clock, iso, parse_dt, short_id, utcnow
+from .. import metrics
+from ..common import Actor, Clock, iso, parse_dt, short_id, untrusted, utcnow
 from ..policy import SystemSettings
 from ..storage import Database, dumps, loads
 from .models import ACTION_DETAILS, ApprovalRecord, ApprovalRequest, Decision, DecisionRefused, DecisionResult
@@ -24,6 +25,14 @@ from .router import ApprovalRouter
 
 log = logging.getLogger(__name__)
 MAX_DELIVERY_ATTEMPTS = 5
+RECOVERED = "The application had stopped before it could write the answer down; it is recorded now, and what the answer led to had already been done in the ERP. "
+
+
+def parse_approver(text: str) -> Optional[tuple[str, str]]:
+    """(person, channel) from what the application wrote on a document it made, "<person> via <channel>", or None when it is not in that form."""
+    person, sep, channel = (text or "").strip().rpartition(" via ")
+    person, channel = person.strip(), channel.strip()
+    return (person, channel) if sep and person and channel and len(channel) <= 40 else None
 
 
 @dataclass
@@ -35,6 +44,9 @@ class KindHandler:
     on_action: Optional[Callable[[ApprovalRecord, str, Actor, str, dict[str, Any]], Optional[DecisionResult]]] = None
     # what came of an answered request, in plain words (for example "Draft purchase order PUR-ORD-... was created"): added to the outcome message every channel shows
     outcome_detail: Optional[Callable[[ApprovalRecord], str]] = None
+    # for a request still waiting: has what answering it leads to already been done elsewhere (the process stopped after the ERP made the document and before the answer was
+    # written down)? Returns the answer that was given, or None; raises when it cannot be found out (the next pass tries again). See ApprovalService.reconcile_pending.
+    reconcile: Optional[Callable[[ApprovalRecord], Optional[Decision]]] = None
 
 
 class ApprovalService:
@@ -58,6 +70,7 @@ class ApprovalService:
         # True when it took the message; it must treat the text as untrusted data and never act on it. None take it = the sender is told they are not registered.
         self.unknown_sender_handlers: list[Callable[[Any, Any], bool]] = []
         self.on_closed: list[Callable[[], None]] = []                       # told after any request was answered, expired, cancelled or replaced (the audit seal)
+        self._warned: set[str] = set()
 
     def register_handler(self, kind: str, handler: KindHandler) -> None:
         self._handlers[kind] = handler
@@ -242,9 +255,13 @@ class ApprovalService:
             sections = record.request.details or record.request.sections
             return DecisionResult(ok=True, status="info", message=record.request.title, approval=record, info_sections=sections)
 
-        now = self.clock()
         decision = Decision(approval_id=approval_id, action=action, actor_id=actor.id, channel=channel,
-                            params=params or {}, decided_at=now, note=note)
+                            params=params or {}, decided_at=self.clock(), note=note)
+        return self._apply(record, decision, channel, address)
+
+    def _apply(self, record: ApprovalRecord, decision: Decision, channel: str, address: Optional[str], recovered: bool = False) -> DecisionResult:
+        """Record the answer and let the kind's handler act on it, in one transaction. For an answer just given, and (`recovered`) for one that is finished at start-up."""
+        approval_id, now = record.id, decision.decided_at
         try:
             with self.db.transaction():
                 cur = self.db.execute(
@@ -267,6 +284,8 @@ class ApprovalService:
 
         final = self.get(approval_id)
         text = self.outcome_text(final)
+        if recovered:
+            text = RECOVERED + text
         self._notify_outcome(final, text)
         if self._outcome_detail(final):
             self._announce_outcome(final, text, channel, address)
@@ -274,6 +293,38 @@ class ApprovalService:
         for listener in self.on_decided:
             self._later(lambda listener=listener: self._tell_listener(listener, final))
         return DecisionResult(ok=True, status="decided", message=text, approval=final)
+
+    def warn_once(self, key: str, message: str, *args: Any) -> None:
+        """One warning per key for the life of this process: a check that repeats every ten minutes must not repeat its complaint."""
+        if key not in self._warned:
+            self._warned.add(key)
+            log.warning(message, *args)
+
+    def reconcile_pending(self) -> list[str]:
+        """Finish answers that were acted on but never written down. A request still waiting can already have had its effect: the process stopped after the ERP made the
+        document and before the answer was recorded. Each kind's `reconcile` looks for that (in the ERP, by the reference the document was made with) and returns the answer
+        it finds. That answer is then recorded as if it had just been given, the people who were sent the request are told once, and the request is closed: it can no longer
+        expire, and no second document can follow. Run at start-up and before requests are expired. Returns the ids it finished."""
+        done: list[str] = []
+        for rec in self.list(status="pending", limit=500):
+            handler = self._handlers.get(rec.kind)
+            if handler is None or handler.reconcile is None:
+                continue
+            try:
+                decision = handler.reconcile(rec)
+            except Exception as exc:  # noqa: BLE001 - the ERP cannot be asked just now: leave the request as it is, the next pass tries again
+                self.warn_once(f"check:{rec.id}", "could not check whether request %s had already been acted on: %s", rec.id, untrusted(exc, 160))
+                continue
+            if decision is None:
+                continue
+            result = self._apply(rec, decision, "", None, recovered=True)
+            if result.ok:
+                done.append(rec.id)
+                obs.event("decision_recovered", logging.WARNING, kind=rec.kind, action=decision.action)
+                metrics.DECISIONS_RECOVERED.inc(kind=rec.kind)
+            elif result.status not in ("already_decided", "expired", "cancelled"):
+                log.warning("could not finish the answer to request %s: %s", rec.id, untrusted(result.message, 200))
+        return done
 
     def _closed(self) -> None:
         for listener in self.on_closed:

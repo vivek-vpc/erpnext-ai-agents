@@ -399,6 +399,10 @@ def _serve(args, create_app, uvicorn, asynccontextmanager, AgentScheduler) -> in
             logging.getLogger("erp_agents.cli").log(level, text)
         else:
             print(text)
+    try:
+        app.approvals.reconcile_pending()               # finish what a stopped process left half done (the ERP made the draft, the answer was not written down), before anything else runs
+    except Exception:  # noqa: BLE001 - never stop the start over it; the housekeeping job tries again every ten minutes
+        log.exception("could not look for answers that were left unfinished")
     scheduler = AgentScheduler(app)
     app.scheduler = scheduler                           # so that /ready can see whether it is running
 

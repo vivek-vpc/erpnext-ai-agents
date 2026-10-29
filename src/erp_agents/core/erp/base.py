@@ -285,6 +285,24 @@ class FollowUpERP(Protocol):
         ...
 
 
+@dataclass(frozen=True)
+class FoundDocument:
+    """A document this application made earlier, found again by the reference it was made with (see `RecoveryERP`)."""
+    doctype: str
+    name: str
+    approved_by: str = ""                    # what the application wrote on it when it made it: "<person> via <channel>"
+
+
+@runtime_checkable
+class RecoveryERP(Protocol):
+    """Finding a document by its reference. Optional, like `FollowUpERP`: a connection without it cannot finish an answer that was acted on but never written down (call it
+    through `getattr`)."""
+
+    def find_by_reference(self, doctype: str, reference: str) -> Optional[FoundDocument]:
+        """The not-cancelled document of this type made for `reference`, or None. Raises when the ERP cannot be asked."""
+        ...
+
+
 @runtime_checkable
 class TransferERP(Protocol):
     """Moving stock between warehouses. Optional, like `FollowUpERP`: a connection without it makes the feature say so (call it through `getattr`)."""

@@ -72,6 +72,7 @@ Logger `erp_agents.calls`. Each says what happened, never what was said: no ques
 | `job_run` | a scheduled job ended | `job`, `ok`, `error` |
 | `circuit_change` | the application stopped asking a service that keeps failing, tried it again, or went back to asking ([RESILIENCE.md](RESILIENCE.md)) | `dependency`, `state` (open, half_open, closed), `failures`, `reason` |
 | `rate_limited` | a person asked too often and was told to wait | `scope` (chat, channel_chat, model), `wait_seconds` (never who asked or what) |
+| `decision_recovered` | an answer was finished at start-up or by the housekeeping job because the ERP already had the document it leads to ([RESILIENCE.md](RESILIENCE.md)) | `kind`, `action` |
 <!-- /log:events -->
 
 A failure is a `WARNING` line with the **class** of the error (for example `ConnectTimeout`), not its text.
