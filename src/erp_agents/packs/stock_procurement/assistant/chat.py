@@ -19,15 +19,14 @@ import hashlib
 import json
 import logging
 import re
-import threading
 import time
-from collections import deque
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Any, Callable, Optional, Sequence
 
 from erp_agents.core.common import Clock, iso, untrusted, utcnow
 from erp_agents.core.policy import AssistantSettings
+from erp_agents.core.resilience import Limits, RateLimited, ResilienceSettings
 from erp_agents.core.settings_store import SettingsStore
 from erp_agents.core.storage import Database, dumps, loads
 from erp_agents.core.erp.base import ERPClient, ItemInfo
@@ -203,8 +202,8 @@ ROUTE_SYSTEM = ("You sort one business question into exactly one category. Categ
                 "decision_history (why something was decided earlier), unknown (anything else). Reply only with JSON.")
 
 
-class ChatLimit(Exception):
-    """Too many questions in a short time."""
+class ChatLimit(RateLimited):
+    """Too many questions in a short time. A RateLimited (core/resilience.py): it says how many seconds to wait."""
 
 
 # ====================================================================== understanding the question
@@ -418,17 +417,15 @@ def status_label(a: Any) -> tuple[str, str]:
 class ChatService:
     def __init__(self, erp: ERPClient, inventory: Any, procurement: Any, proposals: Any, approvals: Any, settings: SettingsStore, db: Database,
                  clock: Clock = utcnow, client_factory: Optional[Callable[[AssistantSettings], LLMClient]] = None,
-                 limit: int = 20, window_seconds: float = 60.0) -> None:
+                 limits: Optional[Limits] = None) -> None:
         self.erp, self.inventory, self.procurement, self.proposals, self.approvals = erp, inventory, procurement, proposals, approvals
         ensure_schema(db)
         self.settings, self.db, self.clock = settings, db, clock
         self.client_factory = client_factory or (lambda cfg: OllamaClient(cfg.base_url, cfg.model, cfg.timeout_seconds))
-        self.limit, self.window = limit, window_seconds
+        self.limits = limits or Limits(ResilienceSettings())          # the application's per-person limits (one set, shared with the chat on phones and the API)
         self.agent_fallback: Optional[Callable[[str, str, bool], Optional[dict[str, Any]]]] = None      # (question, user, can_decide) -> an agent's answer, or None (set by bootstrap)
         self.agent_background: Optional[Callable[[str, str, bool], Optional[dict[str, Any]]]] = None    # same, but starts the agent and returns {"task_id", "answer"} to poll
         self.tool: Optional[Callable[[str, dict[str, Any], str], dict[str, Any]]] = None             # (tool, arguments, who asks) -> the tool's result, with the core's role check (set by the pack)
-        self._asked: dict[str, deque] = {}
-        self._lock = threading.Lock()
         self.transfers: Optional[Any] = None             # the stock transfer service (prepares the request to move stock); set by the pack
         self._items_cache: tuple[float, list[ItemInfo]] = (0.0, [])
         self._overview_cache: tuple[float, list[dict]] = (0.0, [])
@@ -471,15 +468,12 @@ class ChatService:
             self._symbol = SYMBOLS.get(ccy, (ccy + " ") if ccy else "")
         return f"{self._symbol}{x:,.2f}"
 
-    def _throttle(self, user: str) -> None:
-        with self._lock:
-            q = self._asked.setdefault(user, deque())
-            now = time.monotonic()
-            while q and now - q[0] > self.window:
-                q.popleft()
-            if len(q) >= self.limit:
-                raise ChatLimit(f"That is a lot of questions in a minute. Please wait a few seconds.")
-            q.append(now)
+    def _throttle(self, user: str, scope: str = "chat") -> None:
+        """Count one ask against the person's limit for this kind of ask; raises ChatLimit, which says how many seconds to wait."""
+        try:
+            self.limits.enforce(scope, user)
+        except RateLimited as exc:
+            raise ChatLimit(exc.scope, exc.retry_after) from None
 
     def _log(self, user: str, question: str, intent: str, status: str, source: str) -> None:
         try:
@@ -539,6 +533,7 @@ class ChatService:
             return {"status": "disabled", "answer": "The AI helper is switched off in Settings.", "facts": []}
         question = untrusted(question or "", 100_000)[:MAX_CHAT_QUESTION]
         self._throttle(user)
+        self._throttle(user, "model")                              # restating the answer is a call to the language model
         items = self._items()
         plan = understand(question, items, context)
         if plan.intent == "order_request":                          # explaining must never prepare a request a second time
