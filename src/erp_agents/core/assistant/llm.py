@@ -46,9 +46,12 @@ class OllamaClient:
         if resp.status_code >= 400:
             raise LLMError(f"the local model returned HTTP {resp.status_code}: {resp.text[:200]}")
         try:
-            return resp.json()["message"]["content"]
+            content = resp.json()["message"]["content"]
         except (ValueError, KeyError, TypeError) as exc:
             raise LLMError("the local model sent an unexpected response") from exc
+        if not isinstance(content, str):                       # a number, a list, null: not an answer, and what reads it expects text
+            raise LLMError("the local model sent an unexpected response")
+        return content
 
     def status(self) -> dict[str, Any]:
         """Is the server up, and is the configured model installed?"""

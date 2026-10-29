@@ -77,6 +77,50 @@ def _plain(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [{k: v for k, v in m.items() if k != "raw"} for m in messages]
 
 
+# ------------------------------------------------------------------------------------------------------------------- what a reply may contain
+# A model server, or something pretending to be one, can send any JSON. These keep a reply of the wrong shape from raising anything but LLMError, and drop the odd part of a
+# good one (a tool call that is not a call, a token count that is not a number) instead of failing the whole reply.
+def _dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _list(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
+def _text(value: Any) -> str:
+    return value if isinstance(value, str) else ""
+
+
+def _count(value: Any) -> int:
+    """A token count: a whole number from 0 to a billion, and 0 for anything else."""
+    if isinstance(value, bool):
+        return 0
+    try:
+        return max(0, min(int(value), 10**9))
+    except (TypeError, ValueError, OverflowError):
+        return 0
+
+
+def _seconds(value: Any) -> float:
+    try:
+        return max(0.0, float(value or 0))
+    except (TypeError, ValueError, OverflowError):
+        return 0.0
+
+
+def _call(name: Any, arguments: Any) -> Optional[tuple[str, dict[str, Any]]]:
+    """One tool call from what a model sent: (name, arguments as a dict), or None when it is not a call. Arguments given as text are read as JSON; anything else is empty."""
+    if not name or isinstance(name, (dict, list)):
+        return None
+    if isinstance(arguments, str):
+        try:
+            arguments = json.loads(arguments)
+        except ValueError:
+            arguments = {}
+    return str(name), arguments if isinstance(arguments, dict) else {}
+
+
 # ------------------------------------------------------------------------------------------------------------------- Ollama (this computer)
 class OllamaToolClient:
     provider, hosted = "ollama", False
@@ -108,19 +152,11 @@ class OllamaToolClient:
             message = data["message"]
         except (ValueError, KeyError, TypeError) as exc:
             raise LLMError("the model server sent an unexpected response") from exc
-        calls: list[tuple[str, dict[str, Any]]] = []
-        for c in message.get("tool_calls") or []:
-            fn = c.get("function") or {}
-            args = fn.get("arguments")
-            if isinstance(args, str):
-                try:
-                    args = json.loads(args)
-                except ValueError:
-                    args = {}
-            if fn.get("name"):
-                calls.append((str(fn["name"]), args if isinstance(args, dict) else {}))
-        secs = lambda key: float(data.get(key) or 0) / 1e9      # noqa: E731 - Ollama reports nanoseconds
-        return Reply(content=message.get("content") or "", tool_calls=calls, prompt_tokens=int(data.get("prompt_eval_count") or 0), output_tokens=int(data.get("eval_count") or 0),
+        if not isinstance(data, dict) or not isinstance(message, dict):
+            raise LLMError("the model server sent an unexpected response")
+        calls = [c for c in (_call(_dict(_dict(item).get("function")).get("name"), _dict(_dict(item).get("function")).get("arguments")) for item in _list(message.get("tool_calls"))) if c]
+        secs = lambda key: _seconds(data.get(key)) / 1e9      # noqa: E731 - Ollama reports nanoseconds
+        return Reply(content=_text(message.get("content")), tool_calls=calls, prompt_tokens=_count(data.get("prompt_eval_count")), output_tokens=_count(data.get("eval_count")),
                      seconds=time.monotonic() - t0, load_seconds=secs("load_duration"), prompt_seconds=secs("prompt_eval_duration"), generate_seconds=secs("eval_duration"))
 
     def status(self) -> dict[str, Any]:
@@ -261,17 +297,11 @@ class OpenAIToolClient(HostedClient):
             message = data["choices"][0]["message"]
         except (KeyError, IndexError, TypeError) as exc:
             raise LLMError("OpenAI sent an unexpected reply") from exc
-        calls: list[tuple[str, dict[str, Any]]] = []
-        for c in message.get("tool_calls") or []:
-            fn = c.get("function") or {}
-            try:
-                args = json.loads(fn.get("arguments") or "{}")
-            except ValueError:
-                args = {}
-            if fn.get("name"):
-                calls.append((str(fn["name"]), args if isinstance(args, dict) else {}))
-        usage = data.get("usage") or {}
-        return Reply(content=message.get("content") or "", tool_calls=calls, prompt_tokens=int(usage.get("prompt_tokens") or 0), output_tokens=int(usage.get("completion_tokens") or 0),
+        if not isinstance(message, dict):
+            raise LLMError("OpenAI sent an unexpected reply")
+        calls = [c for c in (_call(_dict(_dict(item).get("function")).get("name"), _dict(_dict(item).get("function")).get("arguments")) for item in _list(message.get("tool_calls"))) if c]
+        usage = _dict(data.get("usage"))
+        return Reply(content=_text(message.get("content")), tool_calls=calls, prompt_tokens=_count(usage.get("prompt_tokens")), output_tokens=_count(usage.get("completion_tokens")),
                      seconds=time.monotonic() - t0)
 
 
@@ -343,17 +373,20 @@ class AnthropicToolClient(HostedClient):
         t0 = time.monotonic()
         data = self._request("POST", f"{self.base_url}/v1/messages", body)
         text, calls, answer = [], [], None
-        for block in data.get("content") or []:
+        blocks = data.get("content") or []
+        if not isinstance(blocks, list) or not all(isinstance(b, dict) for b in blocks):
+            raise LLMError("Anthropic sent an unexpected reply")
+        for block in blocks:
             if block.get("type") == "text":
-                text.append(block.get("text", ""))
+                text.append(_text(block.get("text")))
             elif block.get("type") == "tool_use":
                 if block.get("name") == self.ANSWER_TOOL:
                     answer = block.get("input") or {}
-                elif block.get("name"):
-                    calls.append((block["name"], block.get("input") if isinstance(block.get("input"), dict) else {}))
-        usage = data.get("usage") or {}
-        tokens_in = int(usage.get("input_tokens") or 0) + int(usage.get("cache_read_input_tokens") or 0) + int(usage.get("cache_creation_input_tokens") or 0)
-        return Reply(content=json.dumps(answer) if answer is not None else "".join(text), tool_calls=calls, prompt_tokens=tokens_in, output_tokens=int(usage.get("output_tokens") or 0),
+                elif block.get("name") and not isinstance(block.get("name"), (dict, list)):
+                    calls.append((str(block["name"]), block.get("input") if isinstance(block.get("input"), dict) else {}))
+        usage = _dict(data.get("usage"))
+        tokens_in = _count(usage.get("input_tokens")) + _count(usage.get("cache_read_input_tokens")) + _count(usage.get("cache_creation_input_tokens"))
+        return Reply(content=json.dumps(answer) if answer is not None else "".join(text), tool_calls=calls, prompt_tokens=tokens_in, output_tokens=_count(usage.get("output_tokens")),
                      seconds=time.monotonic() - t0)
 
 
@@ -434,14 +467,16 @@ class GeminiToolClient(HostedClient):
         t0 = time.monotonic()
         data = self._request("POST", f"{self.base_url}/v1beta/models/{self.model}:generateContent", body)
         candidates = data.get("candidates") or []
+        if not isinstance(candidates, list) or not all(isinstance(c, dict) for c in candidates):
+            raise LLMError("Gemini sent an unexpected reply")
         if not candidates:
-            raise LLMError("Gemini gave no answer" + (f" ({data['promptFeedback'].get('blockReason')})" if (data.get("promptFeedback") or {}).get("blockReason") else ""))
-        parts = (candidates[0].get("content") or {}).get("parts") or []
-        text = "".join(p.get("text", "") for p in parts if "text" in p and not p.get("thought"))
-        calls = [(p["functionCall"]["name"], p["functionCall"].get("args") or {}) for p in parts if p.get("functionCall", {}).get("name")]
-        usage = data.get("usageMetadata") or {}
-        return Reply(content=text, tool_calls=calls, prompt_tokens=int(usage.get("promptTokenCount") or 0),
-                     output_tokens=int(usage.get("candidatesTokenCount") or 0) + int(usage.get("thoughtsTokenCount") or 0), seconds=time.monotonic() - t0,
+            raise LLMError("Gemini gave no answer" + (f" ({_dict(data.get('promptFeedback')).get('blockReason')})" if _dict(data.get("promptFeedback")).get("blockReason") else ""))
+        parts = [p for p in _list(_dict(candidates[0].get("content")).get("parts")) if isinstance(p, dict)]
+        text = "".join(_text(p.get("text")) for p in parts if "text" in p and not p.get("thought"))
+        calls = [c for c in (_call(_dict(p.get("functionCall")).get("name"), _dict(p.get("functionCall")).get("args")) for p in parts) if c]
+        usage = _dict(data.get("usageMetadata"))
+        return Reply(content=text, tool_calls=calls, prompt_tokens=_count(usage.get("promptTokenCount")),
+                     output_tokens=_count(usage.get("candidatesTokenCount")) + _count(usage.get("thoughtsTokenCount")), seconds=time.monotonic() - t0,
                      raw=list(parts) if calls else None)
 
 
