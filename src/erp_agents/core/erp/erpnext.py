@@ -748,8 +748,23 @@ class ERPNextClient:
             if acting is not None and resp.status_code in (401, 403):
                 return PurchaseOrderResult(ok=False, error=f"ERPNext does not allow {acting.user} to create a {label}: {_erp_message(resp)}")
             return PurchaseOrderResult(ok=False, error=f"ERPNext refused the {label} (HTTP {resp.status_code}): {_erp_message(resp)}")
-        name = (resp.json().get("data") or {}).get("name")
-        return PurchaseOrderResult(ok=bool(name), name=name, error=None if name else "ERPNext did not return a document name")
+        try:
+            name = (resp.json().get("data") or {}).get("name")
+        except (ValueError, AttributeError):                  # a body that is cut off, empty or not what ERPNext sends
+            name = None
+        if name:
+            return PurchaseOrderResult(ok=True, name=name)
+        # ERPNext said it succeeded (HTTP 2xx) but the answer cannot be used: the document may well exist. Find it by the reference it was made with, as a retry would.
+        reference = str(body.get(PO_REF_FIELD) or "")
+        if not reference:
+            return PurchaseOrderResult(ok=False, error=f"ERPNext answered, but its answer could not be read, so a {label} may have been created: check ERPNext for a new draft before trying again")
+        try:
+            existing = self._existing_doc(doctype, reference)
+        except (ERPNextError, requests.RequestException) as exc:
+            return PurchaseOrderResult(ok=False, error=f"ERPNext answered, but its answer could not be read, and looking for the {label} failed ({exc}): check ERPNext for a new draft before trying again")
+        if existing:
+            return PurchaseOrderResult(ok=True, name=existing)
+        return PurchaseOrderResult(ok=False, error=f"ERPNext answered but did not say which {label} it made, and none with this request's reference could be found: check ERPNext before trying again")
 
     def update_purchase_order_qty(self, name: str, reference: str, item_code: str, qty: float, acting: Optional[Any] = None) -> PurchaseOrderResult:
         """The same order, a new quantity: a draft is saved with the new quantity; a submitted order is changed with ERPNext's own "Update Items"
