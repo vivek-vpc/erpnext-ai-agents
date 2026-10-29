@@ -22,8 +22,9 @@ from urllib.parse import urlparse
 
 import requests
 
-from .. import obs
+from .. import obs, resilience
 from ..assistant.llm import SEED, LLMError
+from ..httpguard import guard_session
 from ..netguard import no_redirects
 from ..policy import LOCAL_HOSTS, PROVIDER_LABELS, PROVIDER_URLS, AgentSettings
 
@@ -82,7 +83,7 @@ class OllamaToolClient:
 
     def __init__(self, base_url: str, model: str, timeout: float = 300, session: Optional[Any] = None, num_ctx: int = 8192, max_output_tokens: int = 400) -> None:
         self.base_url, self.model, self.timeout, self.num_ctx, self.max_output_tokens = base_url.rstrip("/"), model, timeout, num_ctx, max_output_tokens
-        self.session = session or obs.observe_session(requests.Session(), "llm")
+        self.session = session or guard_session(obs.observe_session(requests.Session(), "llm"), "model:ollama")      # the breaker is shared by everything that asks this server
         self.remote = is_remote(base_url)
 
     def set_tools(self, tools: list[dict[str, Any]]) -> None:
@@ -125,7 +126,8 @@ class OllamaToolClient:
     def status(self) -> dict[str, Any]:
         """Is the server up, and is the configured model installed?"""
         try:
-            names = [m.get("name", "") for m in self.session.get(f"{self.base_url}/api/tags", timeout=10).json().get("models", [])]
+            with resilience.manual_trial():                    # a person pressed Check connection: ask now, whatever the pause, and let the answer decide
+                names = [m.get("name", "") for m in self.session.get(f"{self.base_url}/api/tags", timeout=10).json().get("models", [])]
         except (requests.RequestException, ValueError) as exc:
             return {"reachable": False, "model_installed": False, "error": str(exc)}
         return {"reachable": True, "model_installed": any(n == self.model or n.split(":")[0] == self.model or n == f"{self.model}:latest" for n in names), "models": names}
@@ -150,7 +152,7 @@ class HostedClient:
         self.base_url, self.model, self.api_key, self.timeout, self.max_output_tokens = base_url.rstrip("/"), model, api_key, timeout, max_output_tokens
         target = urlparse(self.base_url)
         self._origin = (target.scheme, (target.hostname or "").lower(), target.port)
-        self.session = session or obs.observe_session(no_redirects(requests.Session()), "llm")     # belt and braces: every request below also says allow_redirects=False
+        self.session = session or guard_session(obs.observe_session(no_redirects(requests.Session()), "llm"), f"model:{self.provider}")     # belt and braces: every request below also says allow_redirects=False
         self.remote = self.hosted = is_remote(base_url)
         self.tools_known: list[dict[str, Any]] = []
 
@@ -203,7 +205,8 @@ class HostedClient:
     def status(self) -> dict[str, Any]:
         """Does the key work, and can it use the configured model? (Lists the models: no tokens are spent.)"""
         try:
-            names = self._models()
+            with resilience.manual_trial():                    # a person pressed Check connection: ask now, whatever the pause, and let the answer decide
+                names = self._models()
         except LLMError as exc:
             return {"reachable": False, "model_installed": False, "error": str(exc)}
         return {"reachable": True, "model_installed": any(n in (self.model, f"models/{self.model}", f"{self.model}:latest") for n in names), "models": names}

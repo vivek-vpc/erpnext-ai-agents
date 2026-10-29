@@ -40,7 +40,7 @@ def guard_session(session: Any, name: str) -> Any:
     def request(method: str, url: str, *args: Any, **kwargs: Any) -> Any:
         breaker = resilience.BREAKERS.get(name)            # looked up at each request: build_app starts with fresh breakers
         try:
-            breaker.allow()
+            breaker.allow(manual=resilience.manual_trial_active())
         except resilience.BreakerOpen as exc:
             raise CircuitOpen(str(exc), exc.retry_in) from None
         try:

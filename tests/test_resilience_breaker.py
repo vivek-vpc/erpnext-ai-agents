@@ -253,3 +253,23 @@ def test_each_dependency_has_its_own_breaker_with_its_own_limits(time_):
     fail(erp, 2)
     assert registry.states() == {"erpnext": "open", "model:ollama": "closed"}
     llm.allow()                                                 # the model is not affected by ERPNext being down
+
+
+# ------------------------------------------------------------------ a person asks to try it now
+def test_a_person_asking_to_try_it_now_is_the_trial_whatever_the_pause(time_, events):
+    b = breaker(time_, failures=1, pause=300)
+    fail(b)
+    time_.advance(5)
+    with pytest.raises(BreakerOpen):
+        b.allow()
+    b.allow(manual=True)                                        # "Check connection", five seconds after it opened
+    assert b.state == resilience.HALF_OPEN and "a person asked to try it now" in events()[-1]
+    b.record_success()
+    assert b.state == resilience.CLOSED
+
+
+def test_the_manual_trial_is_a_scope_not_a_switch(time_):
+    assert resilience.manual_trial_active() is False
+    with resilience.manual_trial():
+        assert resilience.manual_trial_active() is True
+    assert resilience.manual_trial_active() is False

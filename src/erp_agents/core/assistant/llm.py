@@ -7,7 +7,8 @@ from typing import Any, Optional, Protocol
 
 import requests
 
-from .. import obs
+from .. import obs, resilience
+from ..httpguard import guard_session
 
 SEED = 42
 
@@ -27,7 +28,7 @@ class OllamaClient:
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.timeout = timeout
-        self.session = session or obs.observe_session(requests.Session(), "llm")
+        self.session = session or guard_session(obs.observe_session(requests.Session(), "llm"), "model:ollama")     # the same breaker as the agents' client for this server
 
     def chat(self, system: str, user: str, schema: dict[str, Any]) -> str:
         body = {
@@ -52,7 +53,8 @@ class OllamaClient:
     def status(self) -> dict[str, Any]:
         """Is the server up, and is the configured model installed?"""
         try:
-            resp = self.session.get(f"{self.base_url}/api/tags", timeout=10)
+            with resilience.manual_trial():                    # a person pressed Check connection: ask now, whatever the pause, and let the answer decide
+                resp = self.session.get(f"{self.base_url}/api/tags", timeout=10)
             names = [m.get("name", "") for m in resp.json().get("models", [])]
         except (requests.RequestException, ValueError) as exc:
             return {"reachable": False, "model_installed": False, "error": str(exc)}

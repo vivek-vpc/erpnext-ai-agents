@@ -90,7 +90,7 @@ It makes changes visible only where it recognises something. It cannot know a se
 
 They answer different questions, so a monitor can tell "up" from "up but stuck".
 
-- **`GET /health`** is unchanged: the process is answering. Anybody may call it, even through a tunnel; signed in, it also asks ERPNext (`erp_reachable`) and names the channels.
+- **`GET /health`** is unchanged: the process is answering. Anybody may call it, even through a tunnel; signed in, it also asks ERPNext (`erp_reachable`), names the channels, and says whether the application is asking each dependency as usual or has stopped for a while because it keeps failing (`dependencies`: `closed` or `open`, see [RESILIENCE.md](RESILIENCE.md)).
 - **`GET /ready`** says whether the assistant can do its work: **200** when all of these hold, **503** when any does not.
   1. *database*: it accepts a write (a real, empty write transaction, which fails the way a real write does on a read-only file, a full disk or a lock held by another process). When another process holds the database's write lock, the check waits up to 5 seconds before it answers 503, so give a probe a timeout of 10 seconds;
   2. *migrations*: the database is the shape this version needs;

@@ -17,8 +17,10 @@ import math
 import threading
 import time
 from collections import deque
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, replace
-from typing import Any, Callable, Optional, Protocol, TypeVar
+from typing import Any, Callable, Iterator, Optional, Protocol, TypeVar
 
 from . import metrics, obs
 
@@ -106,6 +108,24 @@ class MemoryBreakerStore:
             return replace(self._states.get(name) or BreakerState())
 
 
+_manual: ContextVar[bool] = ContextVar("erp_agents_manual_trial", default=False)
+
+
+@contextmanager
+def manual_trial() -> Iterator[None]:
+    """A person asked to try the service now (Check connection). Inside the block a request goes out even while the circuit is open, and its answer decides, as the trial
+    after a pause does: so someone who has just restarted the model server does not have to wait for the pause to find out whether it works."""
+    token = _manual.set(True)
+    try:
+        yield
+    finally:
+        _manual.reset(token)
+
+
+def manual_trial_active() -> bool:
+    return _manual.get()
+
+
 class BreakerOpen(RuntimeError):
     """Not sent: the dependency has been failing. `retry_in`: seconds until a trial request is allowed."""
 
@@ -124,19 +144,20 @@ class CircuitBreaker:
         return self.store.peek(self.name).state
 
     # ---------------------------------------------------------------- before a request
-    def allow(self) -> None:
-        """Let a request through, or raise BreakerOpen. The first request after the pause is the trial; the others wait for its verdict."""
+    def allow(self, manual: bool = False) -> None:
+        """Let a request through, or raise BreakerOpen. The first request after the pause is the trial; the others wait for its verdict. `manual`: a person asked to try it now,
+        so this request is the trial whatever the pause."""
         def step(s: BreakerState) -> tuple[Optional[float], Optional[tuple[str, str, int]]]:
             now = self.clock()
             if s.state == CLOSED:
                 return None, None
             waited = now - s.since
             if s.state == OPEN:
-                if waited >= self.pause:
+                if waited >= self.pause or manual:
                     s.state, s.since, s.probing = HALF_OPEN, now, True
-                    return None, (HALF_OPEN, "the pause is over, one trial request is let through", s.failures)
+                    return None, (HALF_OPEN, "a person asked to try it now" if manual and waited < self.pause else "the pause is over, one trial request is let through", s.failures)
                 return self.pause - waited, None
-            if s.probing and waited < self.pause:        # the trial request is still out
+            if s.probing and waited < self.pause and not manual:        # the trial request is still out
                 return self.pause - waited, None
             s.since, s.probing = now, True               # half open and nobody is trying (or the trial was never reported on): this request is the trial
             return None, None
@@ -219,7 +240,10 @@ class Breakers:
                 self._made[name] = made
             return made
 
-    def states(self) -> dict[str, str]:
+    def states(self, include: tuple[str, ...] = ()) -> dict[str, str]:
+        """The state of every dependency asked about so far, and of those named in `include` even if nothing has asked yet."""
+        for name in include:
+            self.get(name)
         with self._lock:
             return {name: b.state for name, b in sorted(self._made.items())}
 

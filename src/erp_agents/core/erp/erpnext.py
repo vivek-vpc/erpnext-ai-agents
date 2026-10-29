@@ -43,6 +43,7 @@ except Exception:  # pragma: no cover
 from urllib.parse import quote
 
 from .. import obs
+from ..httpguard import guard_session
 from ..netguard import no_redirects
 from .base import (STOCK_COLUMNS, CountLine, DailyUsage, ItemInfo, MessageResult, PurchaseOrderDraft, PurchaseOrderResult, QuoteRule, ReceiptLine, RequisitionDraft, SalesDue,
                    StockInfo, StockTransferDraft, SupplierContact, TaxRow, TaxSetup, VendorOffer, WarehouseStock)
@@ -100,7 +101,8 @@ class ERPNextClient:
                 session.mount("http://", HTTPAdapter(max_retries=retry))
                 session.mount("https://", HTTPAdapter(max_retries=retry))
             no_redirects(session)                          # the API key and secret travel in every request's header
-            obs.observe_session(session, "erpnext")        # one line per request (what, status, milliseconds) with the task's id, never the query string
+            # one line per request (what, status, milliseconds) with the task's id, never the query string; the circuit breaker is outermost, so a request it refuses is not logged as made
+            guard_session(obs.observe_session(session, "erpnext"), "erpnext")
         self.session = session
         self.session.headers.update({"Authorization": f"token {api_key}:{api_secret}", "Accept": "application/json"})
 

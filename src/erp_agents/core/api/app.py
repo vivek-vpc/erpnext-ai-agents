@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 
 from ..approvals.inbound import process_inbound
 from ..auth.erpnext import LoginError, Verification
-from .. import metrics
+from .. import metrics, resilience
 from ..acting import acting_as
 from ..bootstrap import App
 from ..common import Actor
@@ -220,7 +220,8 @@ def create_app(app_ctx: App, on_system_change=None, lifespan=None) -> FastAPI:
             current_actor(request)
         except HTTPException:
             return {"ok": True}
-        return {"ok": True, "erp_reachable": ctx.erp.healthcheck(), "channels": sorted(ctx.channels)}
+        return {"ok": True, "erp_reachable": ctx.erp.healthcheck(), "channels": sorted(ctx.channels),
+                "dependencies": resilience.BREAKERS.states(include=("erpnext",))}          # closed = asked as usual, open = not asked for a while because it keeps failing
 
     @api.get("/ready")
     def ready(request: Request) -> JSONResponse:
