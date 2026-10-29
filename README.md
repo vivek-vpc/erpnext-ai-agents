@@ -20,7 +20,7 @@ It runs on a laptop or a small VPS and needs only open-source software (Python, 
 
 > **Status: beta. Licence: GPL-3.0-or-later.**
 >
-> - 1,792 passed and 1 skipped (a POSIX-only permission test; it includes the AI evaluation, [docs/EVALUATION.md](docs/EVALUATION.md)) on Windows with Python 3.14, 28 Oct 2026, run against a demo ERP and fake transports (`python -m pytest`), plus `bandit` and `pip-audit`, which report nothing.
+> - 2,045 passed and 1 skipped (a POSIX-only permission test; it includes the AI evaluation, [docs/EVALUATION.md](docs/EVALUATION.md)) on Windows with Python 3.14, 29 Oct 2026, run against a demo ERP and fake transports (`python -m pytest`), plus `bandit` and `pip-audit`, which report nothing.
 > - Checked live against an **ERPNext v16** test instance: reads, vendor comparison with duties and taxes, sign-in through ERPNext, permissions, and creation of a
 >   draft Purchase Order and Material Request ([docs/E2E_TEST_RESULTS.md](docs/E2E_TEST_RESULTS.md) lists every case and what passed, failed or was not run).
 >   Other ERPNext versions have not been tried.
@@ -458,6 +458,10 @@ erp-agents restore FILE --force   # stop the application first; the database it 
 ### 7d. Watching it run: logs, `/ready`, metrics, traces
 
 Every agent task has an id that appears on every log line it causes (`[task=...]`), so one question can be followed from its first line to its last. `GET /ready`, beside the plain `/health`, says whether the database accepts a write and the scheduler is alive (200 or 503). Prometheus metrics at `/metrics` and OpenTelemetry traces are optional and off until you switch them on in the `observability:` section; log lines can be written as JSON for a log collector. No key, token or phone number reaches a log, and no question, answer or item is in a metric or a trace. How to read it all, every metric, and three alert rules (an approval stuck, answers falling back to the plain rules, repeated ERPNext errors): [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md).
+
+### 7e. When something fails
+
+When ERPNext or the language model keeps failing, the assistant stops asking it for a while and says so once (a circuit breaker) instead of making every person wait for a timeout, and it never invents a figure meanwhile. A lost answer from ERPNext never makes a second draft, and if the program stops right after ERPNext made a draft, the next start records the answer that was given. A message that WhatsApp or Telegram delivers twice is answered once. Each person is limited per minute for questions and for actions that start a language-model task, and the refusal says how many seconds to wait. What each part does, with the test that proves it: [docs/RESILIENCE.md](docs/RESILIENCE.md).
 
 ## 8. How it fits the bigger ERP-agents design
 

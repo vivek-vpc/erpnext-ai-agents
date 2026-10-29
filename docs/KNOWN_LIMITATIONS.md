@@ -21,6 +21,13 @@ What this project does not do, or does only partly, as of 28 Oct 2026. Each poin
 - **ERPNext v16 only.** Other versions have not been tried.
 - **The AI evaluation tests the checks, not the model.** 100 golden questions run in CI with a scripted stand-in for the model ([EVALUATION.md](EVALUATION.md)), so they prove that a wrong reply is caught and nothing is written; they do not say how often a real model errs. The scripted replies are written by hand, the demo world is small (ten items, three vendors each), and the live comparison was run once on real models (Ollama, llama3.1 and llama3, 28 Oct 2026); it showed that llama3.1 got 5 of 8 cases right, that llama3 cannot call tools, and that the checks accept a wrong superlative ("the cheapest vendor" when another is cheaper). A hosted model has not been tried.
 
+## When something fails
+
+- **The circuit breakers and the rate limits are in the memory of the one running process.** They start again after a restart (the breaker learns in a few requests; a person gets at most one extra minute of questions). The ids of delivered messages and the recorded answers are in the database.
+- **An answer the program stopped before writing down is finished at the next start only for orders, requisitions and stock transfers**, not for a change to an existing order, and it needs the application's own fields in ERPNext (`erp-agents erp-setup`). While ERPNext is unreachable it cannot be checked, and the request stays waiting.
+- **A repeated message is recognised only if its channel gave it an id**, and for `inbound_memory_days` (7).
+- **Nothing queues work for later while a service is down.** A question asked while the model is down gets the plain answer; it is not retried by itself when the model comes back. Nobody is messaged that ERPNext is down except by the existing "stock monitor is down" notice after repeated failed runs; the circuit state is in the log, the metrics and the signed-in `/health` ([RESILIENCE.md](RESILIENCE.md)).
+
 ## Watching it run
 
 - **Metrics and traces are for one process and are not kept.** The counters of events (model calls, tool calls, ERPNext requests, fallbacks, job runs) start from zero when the application restarts; the figures read from the database (requests waiting, decisions, tasks, tokens) do not. The application keeps no history: Prometheus does. Both are off until you switch them on ([OBSERVABILITY.md](OBSERVABILITY.md)).
