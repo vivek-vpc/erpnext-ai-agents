@@ -76,6 +76,15 @@ def clock():
     return FakeClock()
 
 
+@pytest.fixture(autouse=True)
+def _fresh_circuit_breakers():
+    """The circuit breakers are shared by every HTTP session in the process (core/resilience.py): each test starts with them all closed and leaves none open for the next."""
+    from erp_agents.core import resilience
+    resilience.configure(resilience.ResilienceSettings())
+    yield
+    resilience.configure(resilience.ResilienceSettings())
+
+
 @pytest.fixture
 def make_app(clock):
     def _make(erp=None, channels=None, cfg=None, http=None):

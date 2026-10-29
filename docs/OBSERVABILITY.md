@@ -70,6 +70,8 @@ Logger `erp_agents.calls`. Each says what happened, never what was said: no ques
 | `erpnext_request` | one request to ERPNext | `method`, `kind` (the document type or method asked for, never the query), `status`, `ms`, `error` |
 | `llm_request` | one HTTP request to a model server | `method`, `kind` (the path, such as `/api/chat`), `status`, `ms`, `error` |
 | `job_run` | a scheduled job ended | `job`, `ok`, `error` |
+| `circuit_change` | the application stopped asking a service that keeps failing, tried it again, or went back to asking ([RESILIENCE.md](RESILIENCE.md)) | `dependency`, `state` (open, half_open, closed), `failures`, `reason` |
+| `rate_limited` | a person asked too often and was told to wait | `scope` (chat, channel_chat, model), `wait_seconds` (never who asked or what) |
 <!-- /log:events -->
 
 A failure is a `WARNING` line with the **class** of the error (for example `ConnectTimeout`), not its text.
@@ -148,6 +150,12 @@ scrape_configs:
 | `erp_agents_scheduler_job_runs_total` | counter | `job`, `outcome` | Scheduled jobs that ran (ok, failed, missed). |
 | `erp_agents_scheduler_lag_seconds` | gauge | `job` | How late the last run of a job started. |
 | `erp_agents_scheduler_last_success_timestamp_seconds` | gauge | `job` | When a job last finished well (Unix time). |
+| `erp_agents_circuit_state` | gauge | `dependency` | The circuit breaker of a dependency: 0 closed (asking as usual), 1 half open (one trial request), 2 open (not asking). |
+| `erp_agents_circuit_transitions_total` | counter | `dependency`, `to` | Changes of a circuit breaker, by dependency and the state it changed to. |
+| `erp_agents_circuit_refused_total` | counter | `dependency` | Requests not sent because the circuit of the dependency was open. |
+| `erp_agents_rate_limited_total` | counter | `scope` | Requests refused because a person asked too often (chat, channel_chat, model). |
+| `erp_agents_inbound_duplicates_total` | counter | `channel` | Messages that a channel delivered again and the application ignored. |
+| `erp_agents_decisions_recovered_total` | counter | `kind` | Answers finished at start-up because the document they led to already existed in ERPNext. |
 | `erp_agents_metric_series_dropped_total` | counter | | Label combinations refused because a metric held 300 already. |
 <!-- /metrics:table -->
 
