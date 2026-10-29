@@ -238,3 +238,11 @@ def test_the_agents_fall_back_to_the_rules_while_the_model_is_down_and_stop_aski
     assert all(r["source"] == "rules" and r["status"] == "unavailable" and r["answer"] == "The AI assistant is not available just now." for r in results)     # honest, nothing made up
     assert net.sent == 3                                                             # the first three tried; the other three never left
     assert "could not reach the model" in results[0]["note"] and "is not answering" in results[-1]["note"]
+
+
+def test_the_person_is_told_in_a_sentence_not_in_the_name_of_an_exception(down):
+    """Found by asking a real server whose ERPNext was down: the answer began "(CircuitOpen: ERPNext is not answering ...". The message is already a sentence for people."""
+    app, net = down
+    answers = [app.chat.ask("How much BOLT-M8 do we have?", "ana", True)["answer"] for _ in range(8)]
+    assert "CircuitOpen" not in answers[-1] and "(ERPNext is not answering" in answers[-1] and "Nothing was changed" in answers[-1]
+    assert "ConnectionError" in answers[0]                                                   # an ordinary failure still names what it was, for whoever reads the log

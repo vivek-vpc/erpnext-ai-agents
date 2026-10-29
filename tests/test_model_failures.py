@@ -188,7 +188,7 @@ def helper_with(app, *script):
 def test_a_question_the_rules_cannot_place_never_fails_because_the_helper_model_misbehaves(chat_world, script):
     helper_with(chat_world, *script)
     answer = chat_world.chat.ask("what about the thingummy over there, you know?", "ana", False)
-    assert answer["status"] in ("help", "not_enough_information", "answered", "error") and "Traceback" not in json.dumps(answer)
+    assert answer["status"] in ("help", "not_enough_information") and "Traceback" not in json.dumps(answer)                  # the helper failing is never shown as an error
     assert answer.get("routed_by_ai") is None                                                       # rubbish does not become a route
 
 

@@ -1150,6 +1150,8 @@ def _label_row(r: dict) -> str:
 
 def _short(exc: Exception) -> str:
     text = " ".join(str(exc).split())
+    if text and getattr(exc, "shown_as_is", False):         # the message is already a sentence for people (a circuit that is open): no exception name in front of it
+        return text[:200]
     return f"{type(exc).__name__}: {text[:160]}" if text else type(exc).__name__
 
 

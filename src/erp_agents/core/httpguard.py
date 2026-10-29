@@ -20,7 +20,10 @@ COUNTED = (requests.ConnectionError, requests.Timeout, requests.exceptions.Chunk
 
 
 class CircuitOpen(requests.ConnectionError):
-    """The request was not sent: the service has been failing. `retry_in`: seconds until a trial request is allowed."""
+    """The request was not sent: the service has been failing. `retry_in`: seconds until a trial request is allowed. Its message is a sentence for people, so a screen that
+    shows an error shows it as it is (`shown_as_is`), without the name of the exception in front."""
+
+    shown_as_is = True
 
     def __init__(self, message: str, retry_in: float = 0.0) -> None:
         super().__init__(message)
