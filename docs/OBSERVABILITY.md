@@ -72,6 +72,7 @@ Logger `erp_agents.calls`. Each says what happened, never what was said: no ques
 | `job_run` | a scheduled job ended | `job`, `ok`, `error` |
 | `circuit_change` | the application stopped asking a service that keeps failing, tried it again, or went back to asking ([RESILIENCE.md](RESILIENCE.md)) | `dependency`, `state` (open, half_open, closed), `failures`, `reason` |
 | `rate_limited` | a person asked too often and was told to wait | `scope` (chat, channel_chat, model), `wait_seconds` (never who asked or what) |
+| `inbound_duplicate` | a channel delivered a message again and it was ignored ([RESILIENCE.md](RESILIENCE.md)) | `channel` (never the message or its id) |
 | `decision_recovered` | an answer was finished at start-up or by the housekeeping job because the ERP already had the document it leads to ([RESILIENCE.md](RESILIENCE.md)) | `kind`, `action` |
 <!-- /log:events -->
 

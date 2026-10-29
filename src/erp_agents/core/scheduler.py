@@ -96,6 +96,7 @@ class AgentScheduler:
     def _maintenance_job(self) -> bool:
         try:
             svc = self.app.approvals
+            svc.inbound.purge()                          # the ids of old messages are forgotten after the set number of days
             recovered = svc.reconcile_pending()          # an answer the ERP already acted on is finished BEFORE its request can expire (and be asked again as a new one)
             expired, reminded, retried = svc.expire_due(), svc.remind_due(), svc.retry_failed_deliveries()
             if self.app.audit is not None:

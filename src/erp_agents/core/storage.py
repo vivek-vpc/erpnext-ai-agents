@@ -22,7 +22,7 @@ log = logging.getLogger(__name__)
 #   - a file with a HIGHER number was made by a newer version of this application: it is refused, untouched (an older version must not guess at tables it does not know);
 #   - a file with a LOWER number is copied aside (`<file>.before-schema-N-<time>`) and then upgraded by MIGRATIONS, one version at a time, each in its own transaction.
 # To change the schema: add the migration as MIGRATIONS[N+1] (a function taking the connection), raise SCHEMA_VERSION to N+1, and add a test (tests/test_operations.py).
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 JOB_RUNS_DDL = """
 CREATE TABLE IF NOT EXISTS job_runs (
     job        TEXT PRIMARY KEY,         -- the scheduler's id for the job (approval_maintenance, inventory_check ...)
@@ -34,13 +34,26 @@ CREATE TABLE IF NOT EXISTS job_runs (
     failures   INTEGER NOT NULL DEFAULT 0
 )"""
 
+INBOUND_SEEN_DDL = """
+CREATE TABLE IF NOT EXISTS inbound_seen (
+    channel     TEXT NOT NULL,          -- whatsapp | telegram
+    external_id TEXT NOT NULL,          -- the id the channel gave the message (WhatsApp's message id, Telegram's update id)
+    seen_at     TEXT NOT NULL,          -- when it was first seen (UTC): ids are forgotten after a few days
+    PRIMARY KEY (channel, external_id)
+)"""
+
 
 def _v2(conn: sqlite3.Connection) -> None:
     """Version 2: the scheduler remembers when each job last ran and how it ended (core/jobs.py), for /ready, the metrics and `doctor`."""
     conn.execute(JOB_RUNS_DDL)
 
 
-MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {2: _v2}
+def _v3(conn: sqlite3.Connection) -> None:
+    """Version 3: the ids of the messages a channel has delivered (core/approvals/inbound_ledger.py), to recognise one that is delivered again."""
+    conn.execute(INBOUND_SEEN_DDL)
+
+
+MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {2: _v2, 3: _v3}
 # Columns added to a table after it first shipped (before migrations existed): an existing database gets them when it is opened (CREATE TABLE IF NOT EXISTS does not change a
 # table that is there). Safe to repeat, so it stays as it is.
 ADDED_COLUMNS = (("agent_tasks", "provider", "TEXT"),)
@@ -170,7 +183,7 @@ CREATE TABLE IF NOT EXISTS tool_calls (
     task_id   TEXT,
     error     TEXT
 );
-""" + JOB_RUNS_DDL + ";\n"
+""" + JOB_RUNS_DDL + ";\n" + INBOUND_SEEN_DDL + ";\n"
 
 
 class Database:

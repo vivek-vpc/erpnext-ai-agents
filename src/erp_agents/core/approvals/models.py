@@ -99,6 +99,7 @@ class InboundEvent(BaseModel):
     ack_token: Optional[str] = None  # e.g. Telegram callback_query id, to dismiss the spinner
     text: Optional[str] = None
     reply_to: Optional[str] = None   # the channel's id of the message the person replied to (so "why this quantity?" can be tied to a request)
+    external_id: Optional[str] = None   # the id the channel gave THIS message (WhatsApp's message id, Telegram's update id): a message delivered again has the same one
 
 
 class DecisionRefused(Exception):

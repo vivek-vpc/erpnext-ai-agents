@@ -170,6 +170,7 @@ def build_app(
     app = App(cfg, db, settings, erp, channels, router, approvals, workorders, tokens, clock, packs,
               login=login, sessions=sessions, throttle=LoginThrottle() if login else None, observability=observability)
     app.resilience, app.limits = resilience_settings, resilience.Limits(resilience_settings)
+    approvals.inbound.memory_days = resilience_settings.inbound_memory_days
     app.agent_log = AgentLog(db, clock)
     app.job_log = JobLog(db, clock)
     app.toolkit = Toolkit(app, log_call=app.agent_log.log_tool)

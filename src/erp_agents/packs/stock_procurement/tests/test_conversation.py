@@ -1,4 +1,5 @@
 """Typing to the assistant from Telegram (and WhatsApp): questions, replies to a request, and the "how many?" answer after Change quantity."""
+import itertools
 import json
 import threading
 import time
@@ -59,16 +60,19 @@ def texts(http, chat=OWNER_CHAT):
     return [p["text"] for p in sent(http, chat)]
 
 
+UPDATE_IDS = itertools.count(100)                  # Telegram gives every update its own id; one that is delivered again has the same (core/approvals/inbound_ledger.py)
+
+
 def say(app, text, sender=OWNER_CHAT, reply_to=None):
     """A message typed into Telegram, as the app receives it."""
-    ev = app.channels["telegram"].parse_webhook({"update_id": 1, "message": {"message_id": 9, "text": text, "from": {"id": int(sender), "is_bot": False, "first_name": "P"},
+    ev = app.channels["telegram"].parse_webhook({"update_id": next(UPDATE_IDS), "message": {"message_id": 9, "text": text, "from": {"id": int(sender), "is_bot": False, "first_name": "P"},
                                                                           "chat": {"id": int(sender), "type": "private"}, **({"reply_to_message": {"message_id": reply_to}} if reply_to else {})}})
     assert len(ev) == 1
     return process_inbound(ev[0], app.router, app.approvals, app.conversation)
 
 
 def press(app, approval_id, action, sender=OWNER_CHAT):
-    ev = app.channels["telegram"].parse_webhook({"update_id": 2, "callback_query": {"id": "cq1", "from": {"id": int(sender)}, "data": encode_action(approval_id, action),
+    ev = app.channels["telegram"].parse_webhook({"update_id": next(UPDATE_IDS), "callback_query": {"id": "cq1", "from": {"id": int(sender)}, "data": encode_action(approval_id, action),
                                                                                   "message": {"message_id": 7, "chat": {"id": int(sender)}}}})
     return process_inbound(ev[0], app.router, app.approvals, app.conversation)
 

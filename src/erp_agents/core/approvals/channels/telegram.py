@@ -138,13 +138,15 @@ class TelegramChannel(Channel):
         return safe_equals(got, self.webhook_secret)
 
     def parse_webhook(self, payload: dict[str, Any]) -> list[InboundEvent]:
+        update_id = payload.get("update_id")
+        uid = str(update_id) if isinstance(update_id, int) and not isinstance(update_id, bool) else None          # the id of this update: Telegram gives the same one when it delivers it again
         cq = payload.get("callback_query")
         if cq:
             decoded = decode_action(cq.get("data", ""))
             if not decoded or not isinstance(cq.get("from"), dict):
                 return []
             return [InboundEvent(
-                channel=self.type, sender=str(cq["from"]["id"]), approval_id=decoded[0], action=decoded[1], ack_token=str(cq["id"]),
+                channel=self.type, sender=str(cq["from"]["id"]), approval_id=decoded[0], action=decoded[1], ack_token=str(cq["id"]), external_id=uid,
             )]
         msg = payload.get("message")
         if isinstance(msg, dict) and isinstance(msg.get("from"), dict) and isinstance(msg.get("chat"), dict):
@@ -152,7 +154,7 @@ class TelegramChannel(Channel):
             if msg["chat"].get("type") == "private" and not msg["from"].get("is_bot") and isinstance(msg.get("text"), str):
                 replied = msg.get("reply_to_message") if isinstance(msg.get("reply_to_message"), dict) else {}
                 return [InboundEvent(channel=self.type, sender=str(msg["from"]["id"]), text=msg["text"][:300],
-                                     reply_to=str(replied["message_id"]) if replied.get("message_id") is not None else None)]
+                                     reply_to=str(replied["message_id"]) if replied.get("message_id") is not None else None, external_id=uid)]
         return []
 
     def acknowledge(self, event: InboundEvent, text: str) -> None:

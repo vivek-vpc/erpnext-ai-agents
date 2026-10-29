@@ -20,6 +20,7 @@ from .. import metrics
 from ..common import Actor, Clock, iso, parse_dt, short_id, untrusted, utcnow
 from ..policy import SystemSettings
 from ..storage import Database, dumps, loads
+from .inbound_ledger import InboundLedger
 from .models import ACTION_DETAILS, ApprovalRecord, ApprovalRequest, Decision, DecisionRefused, DecisionResult
 from .router import ApprovalRouter
 
@@ -71,6 +72,7 @@ class ApprovalService:
         self.unknown_sender_handlers: list[Callable[[Any, Any], bool]] = []
         self.on_closed: list[Callable[[], None]] = []                       # told after any request was answered, expired, cancelled or replaced (the audit seal)
         self._warned: set[str] = set()
+        self.inbound = InboundLedger(db, clock)                              # the ids of the messages the channels delivered, to recognise one that comes again
 
     def register_handler(self, kind: str, handler: KindHandler) -> None:
         self._handlers[kind] = handler
