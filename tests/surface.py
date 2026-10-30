@@ -18,7 +18,7 @@ STATIC_AND_HIDDEN = {("GET", "/"), ("GET", "/ui/{path}"), ("GET", "/metrics")}  
 
 HOSTILE = [
     "x' OR '1'='1", "x'; DROP TABLE alerts;--", "%00", "x\x00y", "../../etc/passwd", "..\\..\\windows\\win.ini", "A" * 5000, "${7*7}", "{{7*7}}", "{vendor.__class__}", "%s%n",
-    "<script>1</script>", "<img src=x onerror=alert(1)>", "x%0d%0aSet-Cookie:a=b", "x\r\nSet-Cookie: a=b", "x‮gpj.exe", "x​‍y", "\x1b[31mred",
+    "<script>1</script>", "<img src=x onerror=alert(1)>", "x%0d%0aSet-Cookie:a=b", "x\r\nSet-Cookie: a=b", "x\u202egpj.exe", "x\u200b\u200dy", "\x1b[31mred",
 ]
 
 
