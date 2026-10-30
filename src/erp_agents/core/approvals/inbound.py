@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
+from .. import metrics, obs
 from .channels.base import Channel
 from .models import DecisionResult, InboundEvent
 from .render import render_plain
@@ -15,7 +16,26 @@ log = logging.getLogger(__name__)
 
 
 def process_inbound(event: InboundEvent, router: ApprovalRouter, service: ApprovalService, conversation: Optional[Any] = None) -> Optional[DecisionResult]:
-    """`conversation` (optional) lets a registered person type to the assistant: questions, a reply to a request, the answer to "how many?"."""
+    """`conversation` (optional) lets a registered person type to the assistant: questions, a reply to a request, the answer to "how many?".
+
+    A message the channel delivers AGAIN (it retries a webhook that was slow or failed, and Telegram hands an update out again after a restart) is recognised by the id the
+    channel gave it and ignored: no second answer, and a typed "change the quantity to 20" is not applied twice. A message whose handling raised is given back, so that a
+    delivery that comes again is tried again. A message with no id is handled as it always was."""
+    ledger = getattr(service, "inbound", None)
+    if ledger is None or not event.external_id:
+        return _process(event, router, service, conversation)
+    if not ledger.claim(event.channel, event.external_id):
+        obs.event("inbound_duplicate", logging.INFO, channel=event.channel)
+        metrics.INBOUND_DUPLICATES.inc(channel=event.channel)
+        return None
+    try:
+        return _process(event, router, service, conversation)
+    except BaseException:
+        ledger.release(event.channel, event.external_id)
+        raise
+
+
+def _process(event: InboundEvent, router: ApprovalRouter, service: ApprovalService, conversation: Optional[Any] = None) -> Optional[DecisionResult]:
     channel: Optional[Channel] = router.channels.get(event.channel)
     if channel is None:
         return None

@@ -22,6 +22,7 @@ import anyio
 
 from .. import metrics, obs, tracing
 from ..assistant.verify import HEDGES, _contains, numbers
+from ..prompting import DATA_RULE, clean, clean_json, unfence
 from .llm import LLMError, Reply, ToolChatClient, salvage_tool_call
 
 if TYPE_CHECKING:                                    # the MCP package is optional: only a running agent needs it
@@ -179,7 +180,7 @@ class AgentRuntime:
         out = Outcome()
         ev = Evidence(job.question)
         out.evidence = ev
-        messages: list[dict[str, Any]] = [{"role": "system", "content": job.system}, {"role": "user", "content": job.user}]
+        messages: list[dict[str, Any]] = [{"role": "system", "content": job.system + " " + DATA_RULE}, {"role": "user", "content": job.user}]
         try:
             tools = await bridge.tools(job.tools)
             names = {t["name"] for t in tools}
@@ -218,7 +219,7 @@ class AgentRuntime:
                     break
                 metrics.GROUNDING_REPAIRS.inc(agent=job.agent, task=job.task)
                 messages += [{"role": "assistant", "content": reply.content},
-                             {"role": "user", "content": "Your answer was rejected: " + "; ".join(problems[:4]) + ". Fix exactly that and reply again in the same JSON format, "
+                             {"role": "user", "content": "Your answer was rejected: " + clean("; ".join(problems[:4]), 600) + ". Fix exactly that and reply again in the same JSON format, "
                                                          "using only numbers and codes that appear in the tool results."}]
                 reply = await self._chat(out, messages, "repair", schema=job.schema)
             out.trace = [{"messages": _readable(messages)}, {"answer": reply.content, "problems": out.problems}, {"timings": out.timings}]
@@ -287,6 +288,7 @@ class AgentRuntime:
         errors = sorted(jsonschema.Draft202012Validator(job.schema).iter_errors(data), key=lambda e: list(e.path))
         if errors:
             return None, [f"{'/'.join(str(p) for p in e.path) or 'the answer'}: {e.message[:120]}" for e in errors[:3]]
+        data = unfence(data)                                      # (a model that copies the marks from its prompt must not show them)
         return data, job.check(data, ev)
 
 
@@ -302,4 +304,4 @@ def _readable(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _tool_message(name: str, result: dict[str, Any]) -> dict[str, Any]:
-    return {"role": "tool", "tool_name": name, "content": json.dumps(result, separators=(",", ":"), default=str)}
+    return {"role": "tool", "tool_name": name, "content": json.dumps(clean_json(result), separators=(",", ":"), default=str)}         # every string in it cleaned and cut: names come from the ERP

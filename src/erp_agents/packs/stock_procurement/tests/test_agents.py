@@ -564,7 +564,7 @@ def test_the_model_reads_a_digest_that_includes_the_programs_figures(world):
     llm = with_model(app, say({"headline": "x", "watch_outs": []}))
     app.agents.brief()
     digest = llm.calls[0]["messages"][1]["content"]
-    assert "BOLT-M8 | " in digest and "1,000,000" in digest and "The program has already found these" in digest
+    assert "\u27e6BOLT-M8\u27e7 | " in digest and "1,000,000" in digest and "The program has already found these" in digest
     quoted = "A request for 1,000,000 pcs is waiting for an answer."
     assert quoted in digest
     quote = {"headline": rules_brief(overview(app))["headline"], "watch_outs": [{"item_code": "BOLT-M8", "note": "That request is about 24,432 days of use."}]}

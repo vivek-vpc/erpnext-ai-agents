@@ -476,7 +476,7 @@ function askBoxHtml(id) {
 function answerHtml(q, r) {
   const [cls, label] = ASK_PILL[r.status] || ["off", r.status];
   const sources = (r.facts || []).length ? `<details style="margin-top:6px"><summary class="muted small" style="cursor:pointer">Where this comes from (${r.facts.length})</summary><ul style="margin:6px 0 0;padding-left:18px">${r.facts.map(f => `<li class="small">${esc(f.text)}</li>`).join("")}</ul></details>` : "";
-  return `<div class="answer"><div class="muted small">You asked: ${esc(q)}</div><div style="display:flex;gap:10px;align-items:flex-start;margin-top:6px"><span class="pill ${cls}">${label}</span><div>${esc(r.answer)}</div></div>${sources}</div>`;
+  return `<div class="answer"><div class="muted small">You asked: ${esc(q)}</div><div style="display:flex;gap:10px;align-items:flex-start;margin-top:6px"><span class="pill ${cls}">${esc(label)}</span><div>${esc(r.answer)}</div></div>${sources}</div>`;
 }
 function wireAsk(root) {
   $$("[data-answers]", root).forEach(async box => { try { const hist = await api("GET", "/api/v1/assistant/history/" + encodeURIComponent(box.dataset.answers)); box.innerHTML = hist.map(h => answerHtml(h.question, h)).join(""); } catch (e) { /* history is optional */ } });
@@ -650,7 +650,7 @@ function viewStock() {
       ${extra.map(c => monitorCell(c, i)).join("")}
       <td class="r num">${i.cover_days == null ? `<span class="muted">–</span>` : `<b>${fmt(i.cover_days, 0)} days</b>`}<small>${i.daily_use ? "selling about " + fmt(i.daily_use, 0) + " a day" : "no recent sales"}</small>${(i.calendar || []).length ? `<small style="color:var(--green-d);font-weight:700">busy season: ${esc(i.calendar[0].name)}</small>` : ""}</td>
       <td><div class="btns" style="flex-wrap:nowrap">${inp("min_qty")}${inp("min_days_cover")}</div><small class="muted" style="${own ? "color:var(--green-d);font-weight:700" : ""}">${own ? "your own rule for this item" : "using your general rule"}</small></td>
-      <td><span class="pill ${cls}">${label}</span>${why ? `<small style="margin-top:6px">${esc(why)}</small>` : ""}${i.incoming ? `<small>${fmt(i.incoming, 0)} on order${i.next_arrival ? ", due " + esc(i.next_arrival) : ""}</small>` : ""}</td>
+      <td><span class="pill ${cls}">${esc(label)}</span>${why ? `<small style="margin-top:6px">${esc(why)}</small>` : ""}${i.incoming ? `<small>${fmt(i.incoming, 0)} on order${i.next_arrival ? ", due " + esc(i.next_arrival) : ""}</small>` : ""}</td>
       <td style="white-space:nowrap"><button class="btn sm primary" data-save="${esc(i.item_code)}" disabled>Save</button> ${own ? `<button class="btn sm" data-reset="${esc(i.item_code)}" ${settingsOk ? "" : "disabled"}>Back to general rule</button>` : ""}</td></tr>`;
   }).join("");
   $("#view").innerHTML = head("Your stock", "Everything the assistant is watching in ERPNext. The items that need attention are at the top.",

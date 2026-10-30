@@ -8,9 +8,10 @@ from erp_agents.core.storage import Database
 
 
 def as_version_one(path):
-    """What a database made by the first version of this application looks like: no job_runs table, schema version 1."""
+    """What a database made by the first version of this application looks like: none of the tables of later versions, schema version 1."""
     c = sqlite3.connect(path)
     c.execute("DROP TABLE job_runs")
+    c.execute("DROP TABLE inbound_seen")
     c.execute("UPDATE schema_info SET version=1")
     c.commit()
     c.close()
@@ -40,10 +41,10 @@ def made(tmp_path, name="app.db"):
     return path
 
 
-def test_this_version_is_schema_2_and_a_new_database_has_the_table(tmp_path):
-    assert storage.SCHEMA_VERSION == 2 and 2 in storage.MIGRATIONS
+def test_this_version_has_schema_2_and_a_new_database_has_the_table(tmp_path):
+    assert storage.SCHEMA_VERSION >= 2 and 2 in storage.MIGRATIONS
     path = made(tmp_path)
-    assert version_of(path) == 2 and "job_runs" in tables(path)
+    assert version_of(path) == storage.SCHEMA_VERSION and "job_runs" in tables(path)
 
 
 def test_a_version_1_database_is_copied_aside_then_upgraded_and_keeps_its_data(tmp_path):
@@ -52,12 +53,12 @@ def test_a_version_1_database_is_copied_aside_then_upgraded_and_keeps_its_data(t
     assert "job_runs" not in tables(path) and version_of(path) == 1
     db = Database(path)
     db.execute("INSERT INTO job_runs(job, runs) VALUES ('inventory_check', 1)")                  # the table is there and works
-    assert db.stored_version() == 2 and db.query_one("SELECT COUNT(*) AS n FROM settings_overrides")["n"] == 1
+    assert db.stored_version() == storage.SCHEMA_VERSION and db.query_one("SELECT COUNT(*) AS n FROM settings_overrides")["n"] == 1
     db.close()
     (copy,) = [p for p in tmp_path.iterdir() if ".before-schema-1-" in p.name]
     assert version_of(str(copy)) == 1 and "job_runs" not in tables(str(copy))                        # the copy is the old database, untouched
     Database(path).close()
-    assert len([p for p in tmp_path.iterdir() if "before-schema" in p.name]) == 1                    # opened again at version 2: no second copy
+    assert len([p for p in tmp_path.iterdir() if "before-schema" in p.name]) == 1                    # opened again at the current version: no second copy
 
 
 def test_a_version_1_backup_still_verifies_and_a_version_2_file_without_the_table_does_not(tmp_path):
@@ -86,7 +87,7 @@ def test_restoring_a_version_1_backup_gives_a_database_that_upgrades_when_it_is_
     ops.restore_database(str(backup), target)
     assert version_of(target) == 1
     Database(target).close()
-    assert version_of(target) == 2 and "job_runs" in tables(target)
+    assert version_of(target) == storage.SCHEMA_VERSION and "job_runs" in tables(target)
 
 
 def test_doctor_says_a_version_1_database_will_be_upgraded_on_the_next_start(tmp_path):

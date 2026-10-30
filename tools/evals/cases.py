@@ -23,7 +23,7 @@ OUTCOMES = ("none", "accepted", "repaired", "declined", "fallback", "unavailable
 # fallback    the reply (and the repair) failed the checks; the person got the rules' answer or "not enough information"
 # unavailable the model could not be reached
 GROUPS = ("item_stock", "stock_overview", "vendor_compare", "document_status", "pending_approvals", "followup_tools", "ambiguous", "follow_up", "decision_history", "permissions",
-          "out_of_scope", "router", "agent_good", "agent_bad", "explain")
+          "out_of_scope", "router", "agent_good", "agent_bad", "explain", "adversarial")
 SETUP_OPS = ("run", "item", "stock", "open_order", "receipt", "alternative", "count", "decide", "order_request", "setting")
 STEP_KEYS = ("tools", "say", "answer", "raw", "error")
 
@@ -60,6 +60,10 @@ class Expect(BaseModel):
     routed_by_ai: Optional[bool] = None         # the chat asked the model to place the question
     rejected_because: list[str] = Field(default_factory=list)  # a reply was rejected, and the checks' reasons contain each of these (proves the intended check fired, not another)
     error: Optional[str] = None                 # the application refused the question with a message containing this
+    shown_must_include: list[str] = Field(default_factory=list)       # what the model was SHOWN (every prompt it was given, joined; only with the scripted model) contains each ("re:" starts a regular expression)
+    shown_must_not_include: list[str] = Field(default_factory=list)   # ... and contains none of these (the raw hostile text, the hidden characters, a run of filler)
+    sent_must_include: list[str] = Field(default_factory=list)        # the messages the application sent to people (the console channel) contain each
+    sent_must_not_include: list[str] = Field(default_factory=list)    # ... and none of these
 
     @field_validator("outcome")
     @classmethod

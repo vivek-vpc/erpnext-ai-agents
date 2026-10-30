@@ -6,7 +6,11 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from zoneinfo import ZoneInfo
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from .common import untrusted
 
 
 class SystemSettings(BaseModel):
@@ -19,6 +23,16 @@ class SystemSettings(BaseModel):
     approval_expiry_hours: int = Field(72, ge=1, description="A request with no answer expires after this long (never auto-approved).")
     reminder_after_hours: int = Field(24, ge=1, description="Send one reminder if there is no answer after this long.")
     max_reminders: int = Field(2, ge=0, le=10, description="Most reminders per request.")
+
+    @field_validator("timezone")
+    @classmethod
+    def _known_zone(cls, value: str) -> str:
+        """A name the time zone database knows: anything else would stop the scheduler and every job that asks for today's date."""
+        try:
+            ZoneInfo(value)
+        except (KeyError, ValueError, OSError):
+            raise ValueError(f"'{untrusted(value, 40)}' is not a time zone name (for example Asia/Kolkata)") from None
+        return value
 
 
 LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1", "[::1]")

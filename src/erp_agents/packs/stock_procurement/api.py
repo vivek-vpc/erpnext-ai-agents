@@ -7,12 +7,14 @@ check, the same as on every other route.
 from __future__ import annotations
 
 import json
+import math
 from typing import Any, Optional
 
 from fastapi import Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from erp_agents.core.common import Actor
+from erp_agents.core.resilience import RateLimited
 from erp_agents.core.erp.base import DEFAULT_IN_TRANSIT, DEFAULT_STOCK_ADD, DEFAULT_STOCK_SUBTRACT, IN_TRANSIT_LABEL, IN_TRANSIT_MODES, STOCK_COLUMNS
 from erp_agents.core.settings_store import PermissionDenied, SettingsError
 from .assistant.chat import ChatLimit
@@ -60,6 +62,17 @@ class PolicyUpdate(BaseModel):
 
 def routes(router: Any, ctx: Any, deps: Any) -> None:
     require, MAX_LIST_LIMIT = deps.require, deps.MAX_LIST_LIMIT
+
+    def too_often(exc: RateLimited) -> HTTPException:
+        """429, with how long to wait in words (for a person) and in the Retry-After header (for a program)."""
+        return HTTPException(429, str(exc), headers={"Retry-After": str(max(1, math.ceil(exc.retry_after)))})
+
+    def model_limit(actor: Actor) -> None:
+        """Starting a language-model task is limited per person, with one count for every action that does (Ask why, an agent question, a brief, a review)."""
+        try:
+            ctx.limits.enforce("model", actor.id)
+        except RateLimited as exc:
+            raise too_often(exc) from None
 
     # ---------------------------------------------------------------- purchasing follow-up and stock intelligence (the same results as the agents' tools)
     def tool(name: str, args: dict[str, Any], actor: Actor) -> dict:
@@ -255,6 +268,7 @@ def routes(router: Any, ctx: Any, deps: Any) -> None:
 
     @router.post("/api/v1/assistant/ask")
     def assistant_ask(body: AskBody, actor: Actor = Depends(require("approver"))) -> dict:
+        model_limit(actor)
         try:
             return ctx.assistant.ask(body.approval_id, body.question, actor)
         except KeyError as exc:
@@ -274,7 +288,7 @@ def routes(router: Any, ctx: Any, deps: Any) -> None:
                 return ctx.chat.explain(body.question, actor.id, actor.has_role("approver"), ctx_dict)
             return ctx.chat.ask(body.question, actor.id, actor.has_role("approver"), ctx_dict, background=True)
         except ChatLimit as exc:
-            raise HTTPException(429, str(exc))
+            raise too_often(exc) from None
         except ValueError as exc:
             raise HTTPException(422, str(exc))
 
@@ -287,6 +301,7 @@ def routes(router: Any, ctx: Any, deps: Any) -> None:
 
     @router.post("/api/v1/agents/brief")
     def agents_brief_run(actor: Actor = Depends(require("approver"))) -> dict:
+        model_limit(actor)
         return ctx.agents.brief_async(actor.id)
 
     @router.post("/api/v1/agents/ask")
@@ -295,9 +310,10 @@ def routes(router: Any, ctx: Any, deps: Any) -> None:
             raise HTTPException(409, "The AI agents are switched off in Settings.")
         try:
             ctx.chat.throttle(actor.id)
+            model_limit(actor)
             plan = ctx.agents.ask_plan(body.question, actor)
         except ChatLimit as exc:
-            raise HTTPException(429, str(exc))
+            raise too_often(exc) from None
         except ValueError as exc:
             raise HTTPException(422, str(exc))
         return {"task_id": ctx.agents.submit(plan), "status": "running"}
@@ -309,6 +325,7 @@ def routes(router: Any, ctx: Any, deps: Any) -> None:
 
     @router.post("/api/v1/agents/reviews/{approval_id}")
     def agents_review_run(approval_id: str, force: bool = False, actor: Actor = Depends(require("approver"))) -> dict:
+        model_limit(actor)
         try:
             return ctx.agents.review_async(approval_id, actor.id, force)
         except ValueError as exc:

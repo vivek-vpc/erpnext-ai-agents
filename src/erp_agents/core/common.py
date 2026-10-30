@@ -28,12 +28,16 @@ def parse_dt(text: str | None) -> datetime | None:
 # Characters that can forge a log line or hide what text really says: C0/C1 controls (line breaks, escape sequences), zero-width characters, and the bidi overrides
 # that make text display in a different order than it is stored ("Trojan Source").
 _INVISIBLE = re.compile("[\x00-\x1f\x7f-\x9f\u200b-\u200f\u202a-\u202e\u2028\u2029\u2060-\u2064\u2066-\u2069\ufeff]")
+# Characters with no width and no meaning on screen that can still carry text a model reads: the soft hyphen, the combining grapheme joiner, the Arabic letter mark, the Mongolian vowel
+# separator, the interlinear annotation marks, the 'tag' characters (a whole invisible alphabet) and the variation selectors supplement. They are removed, not replaced by a space,
+# because there is nothing between the letters they sit among.
+_SMUGGLING = re.compile("[\u00ad\u034f\u061c\u180e\ufff9-\ufffb\U000e0000-\U000e007f\U000e0100-\U000e01ef]")
 
 
 def untrusted(value: object, limit: int = 80) -> str:
-    """Text that came from outside (a person, a model, the ERP's item names) made safe to quote in an error message or a log line: control and invisible characters
-    become spaces, whitespace is collapsed, and it is cut to `limit` characters with an ellipsis. Letters of any language are kept."""
-    text = " ".join(_INVISIBLE.sub(" ", str(value if value is not None else "")).split())
+    """Text that came from outside (a person, a model, the ERP's item names) made safe to quote in an error message, a log line or a prompt: control and invisible characters
+    become spaces (the ones that sit invisibly inside a word are removed), whitespace is collapsed, and it is cut to `limit` characters with an ellipsis. Letters of any language are kept."""
+    text = " ".join(_INVISIBLE.sub(" ", _SMUGGLING.sub("", str(value if value is not None else ""))).split())
     return text if len(text) <= limit else text[: max(limit - 1, 0)].rstrip() + "\u2026"
 
 

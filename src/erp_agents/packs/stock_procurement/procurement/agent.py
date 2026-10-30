@@ -19,13 +19,13 @@ from typing import Any, Callable, Optional
 from zoneinfo import ZoneInfo
 
 from erp_agents.core.approvals.models import ApprovalRecord, Decision, DecisionRefused, DecisionResult
-from erp_agents.core.approvals.service import ApprovalService, KindHandler
+from erp_agents.core.approvals.service import ApprovalService, KindHandler, parse_approver
 from erp_agents.core import acting
 from erp_agents.core.common import Actor, Clock, iso, short_id, utcnow
 from erp_agents.core.settings_store import SettingsStore
 from erp_agents.core.storage import Database, dumps
 from erp_agents.core.workorders import REORDER_NEEDED, WorkOrderQueue
-from erp_agents.core.erp.base import ERPClient, PurchaseOrderDraft, QuoteRule, RequisitionDraft, TaxSetup
+from erp_agents.core.erp.base import ERPClient, PurchaseOrderDraft, PurchaseOrderResult, QuoteRule, RequisitionDraft, TaxSetup
 from .messages import (
     KIND_MANUAL, KIND_ORDER, KIND_PO, KIND_PR, build_manual_request, build_order_request, build_po_request, expected_arrival, requisition_note, route_for, vendor_note_for,
 )
@@ -78,7 +78,7 @@ class ProcurementAgent:
         ensure_schema(db)
         self.approvals, self.workorders, self.db, self.clock = approvals, workorders, db, clock
         handler = KindHandler(on_decision=self._on_decision, on_expired=self._on_expired, on_cancelled=self._on_cancelled, on_action=self._on_action,
-                              outcome_detail=self._outcome_detail)
+                              outcome_detail=self._outcome_detail, reconcile=self._reconcile)
         approvals.register_handler(KIND_PO, handler)
         approvals.register_handler(KIND_PR, handler)
         approvals.register_handler(KIND_MANUAL, handler)
@@ -653,21 +653,24 @@ class ProcurementAgent:
             return
         wo = self.workorders.get(prop.work_order_id) or {"payload": {}}
         pay = wo["payload"]
-        moq = None if pr else self._moq(prop.item_code)
+        recovered = decision.params.get("recovered_document")           # finishing an answer after a restart: the document is already in the ERP and is not made or taken back again
+        moq = None if (pr or recovered) else self._moq(prop.item_code)
         if moq and float(prop.qty or 0) < moq:
             raise RuntimeError(f"this item has a minimum order quantity of {_n(moq)} {pay.get('uom', 'units')} in your ERP and this request is for {_n(prop.qty)}. "
                                f"Press Change quantity and enter {_n(moq)} or more, or type: create a purchase order for {prop.item_code}")
         best = next((v for v in (prop.ranking or {}).get("vendors", []) if v["supplier"] == prop.supplier), {})
         arrival = expected_arrival(self.today(), best.get("lead_days")) or self.today() + timedelta(days=int(pay.get("lead_time_days") or 7))
-        who_acting = self._acting_for(decision.actor_id, cfg)
+        who_acting = None if recovered else self._acting_for(decision.actor_id, cfg)
         approved_by = f"{decision.actor_id} via {decision.channel}"
         replaces = None if pr else (prop.ranking or {}).get("replaces_po")
-        if replaces:                                         # this order replaces one that exists: take that one back first, so a failure leaves nothing doubled
+        if replaces and not recovered:                       # this order replaces one that exists: take that one back first, so a failure leaves nothing doubled
             removed = self.erp.cancel_purchase_order(replaces, prop.id, acting=who_acting)
             if not removed.ok:
                 raise DecisionRefused(f"The earlier order {replaces} could not be removed, so it was not replaced: {str(removed.error).rstrip('.')}. Press Reject on this request to keep the earlier order as it is.")
         revision = int((prop.ranking or {}).get("order_revision") or 0)
-        if pr:
+        if recovered:
+            result = PurchaseOrderResult(ok=True, name=str(recovered))
+        elif pr:
             note = requisition_note(pay, _Vendor(best), _Need(prop.qty, pay.get("uom", "units")), self.today())
             result = self.erp.create_material_request(RequisitionDraft(
                 item_code=prop.item_code, qty=float(prop.qty or 0), uom=pay.get("uom", "units"), required_by=arrival, rate=prop.rate,
@@ -693,9 +696,31 @@ class ProcurementAgent:
             done["replaces_po"] = None
             done["replaced"] = [*(done.get("replaced") or []), replaces]
         self.proposals.set_ranking(prop.id, done)
-        by = f"created under {who_acting.user}'s own ERPNext login" if who_acting else "created by the service account, with the approver's name on it"
+        by = ("found in ERPNext after a restart, where it had been made before the answer was written down" if recovered else
+              f"created under {who_acting.user}'s own ERPNext login" if who_acting else "created by the service account, with the approver's name on it")
         self.proposals.update_status(prop.id, "ordered", f"{who}; draft {thing} {result.name} ({by})" + (f"; it replaced draft {replaces}" if replaces else ""), po_name=result.name)
         self.workorders.set_status(prop.work_order_id, "done")
+
+    def _reconcile(self, record: ApprovalRecord) -> Optional[Decision]:
+        """Was this request already acted on in the ERP, though the answer was never written down? Look for the draft by the reference it was made with: if it is there, the
+        answer is the one written on it (an order or a requisition, by whom, from where). Raises when the ERP cannot be asked: the next pass tries again."""
+        find = getattr(self.erp, "find_by_reference", None)
+        prop = self.proposals.by_approval(record.id)
+        if find is None or prop is None or prop.status not in ("awaiting", "manual"):
+            return None
+        revision = int((prop.ranking or {}).get("order_revision") or 0)
+        for doctype, reference, action in (("Purchase Order", prop.id if not revision else f"{prop.id}-{revision}", "approve"), ("Material Request", prop.id, "requisition")):
+            found = find(doctype, reference)
+            if found is None:
+                continue
+            who = parse_approver(found.approved_by)
+            if who is None:
+                self.approvals.warn_once(f"approver:{record.id}", "request %s: %s exists in the ERP, but the approver written on it cannot be read, so the answer was not recorded. Answer the request again (it will find %s) or cancel it.",
+                                         record.id, found.name, found.name)
+                return None
+            return Decision(approval_id=record.id, action=action, actor_id=who[0], channel=who[1], params={"recovered_document": found.name}, decided_at=self.clock(),
+                            note="finished after a restart: the draft already existed in ERPNext")
+        return None
 
     def _on_expired(self, record: ApprovalRecord) -> None:
         prop = self.proposals.by_approval(record.id)

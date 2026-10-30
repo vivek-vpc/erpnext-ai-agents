@@ -289,15 +289,15 @@ def test_serve_prints_the_warning(tmp_path, monkeypatch, capsys):
 # ====================================================================== F-4: untrusted text in errors and logs
 def test_untrusted_text_loses_control_and_invisible_characters_and_is_capped():
     assert untrusted("BOLT\r\nINFO forged log line\x1b[31m") == "BOLT INFO forged log line [31m"
-    assert untrusted("abc‮dcba​") == "abc dcba"
-    assert untrusted("बोल्ट M8") == "बोल्ट M8"                                # letters of any language stay
-    assert untrusted("x" * 500, 80) == "x" * 79 + "…" and len(untrusted("y" * 500, 10)) == 10
+    assert untrusted("abc\u202edcba\u200b") == "abc dcba"
+    assert untrusted("\u092c\u094b\u0932\u094d\u091f M8") == "\u092c\u094b\u0932\u094d\u091f M8"                                # letters of any language stay
+    assert untrusted("x" * 500, 80) == "x" * 79 + "\u2026" and len(untrusted("y" * 500, 10)) == 10
 
 
 def test_a_tool_error_never_echoes_control_characters_or_long_text(make_app):
     app = make_app(erp=MockERP())
-    res = app.toolkit.call("stock_status", {"item_code": "NOPE\nERROR admin logged in‮"}, OWNER)
-    assert "\n" not in res["error"] and "‮" not in res["error"] and "NOPE ERROR admin logged in" in res["error"]
+    res = app.toolkit.call("stock_status", {"item_code": "NOPE\nERROR admin logged in\u202e"}, OWNER)
+    assert "\n" not in res["error"] and "\u202e" not in res["error"] and "NOPE ERROR admin logged in" in res["error"]
     res = app.toolkit.call("stock_status", {"item_code": "A" * 5000}, OWNER)
     assert "too long" in res["error"] and len(json.dumps(res)) < 300
     res = app.toolkit.call("no_such\ntool", {}, OWNER)
@@ -335,7 +335,7 @@ def test_log_lines_from_strangers_are_cleaned(make_app, caplog):
 
 def test_a_chat_question_is_cleaned_before_anything_else_sees_it(make_app):
     app = make_app(erp=MockERP())
-    out = app.chat.ask("how much BOLT-M8‮ do we\x00 have?", "owner", True)
+    out = app.chat.ask("how much BOLT-M8\u202e do we\x00 have?", "owner", True)
     assert out["status"] == "answered" and "BOLT-M8" in out["items"]
 
 

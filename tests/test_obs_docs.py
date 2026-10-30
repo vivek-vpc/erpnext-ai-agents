@@ -93,7 +93,7 @@ def events_in_the_code():
 
 def test_the_event_table_lists_every_event_the_code_writes_and_no_other():
     in_code = events_in_the_code()
-    assert {"agent_task_start", "agent_task", "llm_call", "tool_call", "job_run", "erpnext_request", "llm_request"} == set(in_code)        # the scan itself sees what it should
+    assert {"agent_task_start", "agent_task", "llm_call", "tool_call", "job_run", "erpnext_request", "llm_request"} <= set(in_code)        # the scan itself sees what it should
     documented = {names_in(r[0])[0]: set(names_in(r[2])) for r in table("log:events")}
     assert set(documented) == set(in_code)
 

@@ -23,6 +23,7 @@ from ..procurement.proposals import ProposalRepo
 from erp_agents.core.assistant.facts import Fact, build_facts
 from erp_agents.core.assistant.llm import LLMClient, LLMError, OllamaClient
 from erp_agents.core.assistant.verify import NOT_ENOUGH, verify
+from erp_agents.core.prompting import DATA_RULE, clean, data, fact_line
 from ..schema import ensure_schema
 
 log = logging.getLogger(__name__)
@@ -37,6 +38,7 @@ Follow these rules exactly:
 3. If the facts do not contain the answer, set "answerable" to false and leave "answer" empty.
 4. Answer in at most 4 short, plain sentences.
 5. Put in "facts_used" the id (for example "F3") of every fact your answer relies on.
+6. """ + DATA_RULE + """
 Reply only with JSON."""
 
 REPLY_SCHEMA: dict[str, Any] = {
@@ -84,7 +86,7 @@ class AssistantService:
     # ---------------------------------------------------------------- ask
     def ask(self, approval_id: str, question: str, actor: Actor) -> dict[str, Any]:
         cfg = self.settings.assistant()
-        question = " ".join((question or "").split())
+        question = clean(question or "", 100_000)               # control, invisible and bidi characters out; the length rule below still applies
         if not question:
             raise ValueError("Please type a question.")
         if len(question) > MAX_QUESTION:
@@ -100,7 +102,7 @@ class AssistantService:
             result.pop("draft", None)
             return {**result, "cached": True}
 
-        user = "FACTS:\n" + "\n".join(f"{f.id}: {f.text}" for f in facts) + f"\n\nQUESTION: {question}"
+        user = "FACTS:\n" + "\n".join(fact_line(f.id, f.text) for f in facts) + f"\n\nQUESTION: {data(question, MAX_QUESTION)}"
         started = time.monotonic()
         try:
             raw = self.client_factory(cfg).chat(SYSTEM_PROMPT, user, REPLY_SCHEMA)

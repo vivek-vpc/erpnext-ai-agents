@@ -43,8 +43,9 @@ except Exception:  # pragma: no cover
 from urllib.parse import quote
 
 from .. import obs
+from ..httpguard import guard_session
 from ..netguard import no_redirects
-from .base import (STOCK_COLUMNS, CountLine, DailyUsage, ItemInfo, MessageResult, PurchaseOrderDraft, PurchaseOrderResult, QuoteRule, ReceiptLine, RequisitionDraft, SalesDue,
+from .base import (STOCK_COLUMNS, CountLine, DailyUsage, FoundDocument, ItemInfo, MessageResult, PurchaseOrderDraft, PurchaseOrderResult, QuoteRule, ReceiptLine, RequisitionDraft, SalesDue,
                    StockInfo, StockTransferDraft, SupplierContact, TaxRow, TaxSetup, VendorOffer, WarehouseStock)
 
 log = logging.getLogger(__name__)
@@ -100,7 +101,8 @@ class ERPNextClient:
                 session.mount("http://", HTTPAdapter(max_retries=retry))
                 session.mount("https://", HTTPAdapter(max_retries=retry))
             no_redirects(session)                          # the API key and secret travel in every request's header
-            obs.observe_session(session, "erpnext")        # one line per request (what, status, milliseconds) with the task's id, never the query string
+            # one line per request (what, status, milliseconds) with the task's id, never the query string; the circuit breaker is outermost, so a request it refuses is not logged as made
+            guard_session(obs.observe_session(session, "erpnext"), "erpnext")
         self.session = session
         self.session.headers.update({"Authorization": f"token {api_key}:{api_secret}", "Accept": "application/json"})
 
@@ -746,8 +748,23 @@ class ERPNextClient:
             if acting is not None and resp.status_code in (401, 403):
                 return PurchaseOrderResult(ok=False, error=f"ERPNext does not allow {acting.user} to create a {label}: {_erp_message(resp)}")
             return PurchaseOrderResult(ok=False, error=f"ERPNext refused the {label} (HTTP {resp.status_code}): {_erp_message(resp)}")
-        name = (resp.json().get("data") or {}).get("name")
-        return PurchaseOrderResult(ok=bool(name), name=name, error=None if name else "ERPNext did not return a document name")
+        try:
+            name = (resp.json().get("data") or {}).get("name")
+        except (ValueError, AttributeError):                  # a body that is cut off, empty or not what ERPNext sends
+            name = None
+        if name:
+            return PurchaseOrderResult(ok=True, name=name)
+        # ERPNext said it succeeded (HTTP 2xx) but the answer cannot be used: the document may well exist. Find it by the reference it was made with, as a retry would.
+        reference = str(body.get(PO_REF_FIELD) or "")
+        if not reference:
+            return PurchaseOrderResult(ok=False, error=f"ERPNext answered, but its answer could not be read, so a {label} may have been created: check ERPNext for a new draft before trying again")
+        try:
+            existing = self._existing_doc(doctype, reference)
+        except (ERPNextError, requests.RequestException) as exc:
+            return PurchaseOrderResult(ok=False, error=f"ERPNext answered, but its answer could not be read, and looking for the {label} failed ({exc}): check ERPNext for a new draft before trying again")
+        if existing:
+            return PurchaseOrderResult(ok=True, name=existing)
+        return PurchaseOrderResult(ok=False, error=f"ERPNext answered but did not say which {label} it made, and none with this request's reference could be found: check ERPNext before trying again")
 
     def update_purchase_order_qty(self, name: str, reference: str, item_code: str, qty: float, acting: Optional[Any] = None) -> PurchaseOrderResult:
         """The same order, a new quantity: a draft is saved with the new quantity; a submitted order is changed with ERPNext's own "Update Items"
@@ -1065,7 +1082,11 @@ class ERPNextClient:
         raise ERPNextError(f"could not check for the {doctype} field {fieldname}: HTTP {resp.status_code} {resp.text[:120]}")
 
     def _existing_doc(self, doctype: str, reference: str) -> Optional[str]:
-        """The not-cancelled document already created for this proposal, if any. Refuses (ERPNextError) when its fields have not been set up."""
+        found = self.find_by_reference(doctype, reference)
+        return found.name if found else None
+
+    def find_by_reference(self, doctype: str, reference: str) -> Optional[FoundDocument]:
+        """The not-cancelled document already created for this proposal, if any, with the approver written on it. Refuses (ERPNextError) when its fields have not been set up."""
         ok = getattr(self, "_fields_ok", None)
         if ok is None:
             ok = self._fields_ok = set()
@@ -1074,8 +1095,8 @@ class ERPNextClient:
                 raise ERPNextError(f"the {doctype} fields '{PO_REF_LABEL}' and '{PO_APPROVER_LABEL}' do not exist in ERPNext yet, so duplicates could not "
                                    "be prevented and the approver could not be recorded. Run: erp-agents erp-setup")
             ok.add(doctype)
-        rows = self._list(doctype, ["name"], [[PO_REF_FIELD, "=", reference], ["docstatus", "<", 2]])
-        return rows[0]["name"] if rows else None
+        rows = self._list(doctype, ["name", PO_APPROVER_FIELD], [[PO_REF_FIELD, "=", reference], ["docstatus", "<", 2]])
+        return FoundDocument(doctype, rows[0]["name"], str(rows[0].get(PO_APPROVER_FIELD) or "")) if rows else None
 
     def _company_currency(self) -> str:
         if not hasattr(self, "_ccy_cache"):

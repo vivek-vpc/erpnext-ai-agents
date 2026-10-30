@@ -205,16 +205,17 @@ class WhatsAppChannel(Channel):
             for change in entry.get("changes", []):
                 for msg in change.get("value", {}).get("messages", []):
                     sender = str(msg.get("from", ""))
+                    mid = str(msg["id"])[:200] if msg.get("id") else None
                     if msg.get("type") == "interactive":
                         inter = msg.get("interactive", {})
                         reply = inter.get("button_reply") or inter.get("list_reply") or {}
                         decoded = decode_action(reply.get("id", ""))
                         if decoded:
-                            events.append(InboundEvent(channel=self.type, sender=sender, approval_id=decoded[0], action=decoded[1]))
+                            events.append(InboundEvent(channel=self.type, sender=sender, approval_id=decoded[0], action=decoded[1], external_id=mid))
                     elif msg.get("type") == "button":            # quick-reply button of a template message
                         decoded = decode_action((msg.get("button") or {}).get("payload", ""))
                         if decoded:
-                            events.append(InboundEvent(channel=self.type, sender=sender, approval_id=decoded[0], action=decoded[1]))
+                            events.append(InboundEvent(channel=self.type, sender=sender, approval_id=decoded[0], action=decoded[1], external_id=mid))
                     elif msg.get("type") == "text":
-                        events.append(InboundEvent(channel=self.type, sender=sender, text=msg.get("text", {}).get("body", "")))
+                        events.append(InboundEvent(channel=self.type, sender=sender, text=msg.get("text", {}).get("body", ""), external_id=mid))
         return events

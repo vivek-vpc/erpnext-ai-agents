@@ -1,4 +1,5 @@
 """Telegram end to end (against a faked Telegram): onboarding, who may answer, alerts and orders by button, and the bot token never leaking."""
+import itertools
 import logging
 from types import SimpleNamespace
 
@@ -21,6 +22,7 @@ from erp_agents.core.erp.mock import MockERP
 TOKEN = "123456789:AAFakeBotTokenForTests_xyz"
 SECRET = "web-hook_secret-1"
 OWNER_CHAT = "555"
+UPDATE_IDS = itertools.count(100)                  # Telegram gives every update its own id; one delivered again has the same (core/approvals/inbound_ledger.py)
 
 
 def tg(http=None, **kw):
@@ -28,11 +30,11 @@ def tg(http=None, **kw):
 
 
 def msg(text, sender=777, chat_type="private", bot=False):
-    return {"update_id": 1, "message": {"message_id": 5, "text": text, "from": {"id": sender, "is_bot": bot, "first_name": "Priya"}, "chat": {"id": sender, "type": chat_type}}}
+    return {"update_id": next(UPDATE_IDS), "message": {"message_id": 5, "text": text, "from": {"id": sender, "is_bot": bot, "first_name": "Priya"}, "chat": {"id": sender, "type": chat_type}}}
 
 
 def press(approval_id, action, sender=int(OWNER_CHAT)):
-    return {"update_id": 2, "callback_query": {"id": "cq1", "from": {"id": sender}, "data": encode_action(approval_id, action),
+    return {"update_id": next(UPDATE_IDS), "callback_query": {"id": "cq1", "from": {"id": sender}, "data": encode_action(approval_id, action),
                                                "message": {"message_id": 77, "chat": {"id": sender}}}}
 
 
@@ -142,7 +144,7 @@ def test_groups_other_bots_and_odd_updates_are_ignored():
 def test_polling_asks_for_button_presses_and_messages_and_advances_past_each_update():
     http = FakeHTTP()
     ch = tg(http)
-    http.updates = [msg("/start"), {**press("abc123def4", "approve"), "update_id": 9}]
+    http.updates = [{**msg("/start"), "update_id": 8}, {**press("abc123def4", "approve"), "update_id": 9}]
     events = ch.poll_once(timeout=0)
     assert [e.text for e in events] == ["/start", None] and events[1].action == "approve"
     sent = http.calls[0][1]

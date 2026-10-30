@@ -20,14 +20,14 @@ It runs on a laptop or a small VPS and needs only open-source software (Python, 
 
 > **Status: beta. Licence: GPL-3.0-or-later.**
 >
-> - 1,792 passed and 1 skipped (a POSIX-only permission test; it includes the AI evaluation, [docs/EVALUATION.md](docs/EVALUATION.md)) on Windows with Python 3.14, 28 Oct 2026, run against a demo ERP and fake transports (`python -m pytest`), plus `bandit` and `pip-audit`, which report nothing.
+> - 2,182 passed and 1 skipped (a POSIX-only permission test; it includes the AI evaluation, [docs/EVALUATION.md](docs/EVALUATION.md)) on Windows with Python 3.14, 30 Oct 2026, run against a demo ERP and fake transports (`python -m pytest`), plus `bandit` and `pip-audit`, which report nothing.
 > - Checked live against an **ERPNext v16** test instance: reads, vendor comparison with duties and taxes, sign-in through ERPNext, permissions, and creation of a
 >   draft Purchase Order and Material Request ([docs/E2E_TEST_RESULTS.md](docs/E2E_TEST_RESULTS.md) lists every case and what passed, failed or was not run).
 >   Other ERPNext versions have not been tried.
 > - **Telegram and WhatsApp**: the automated tests use fake transports. Messages have been delivered live on the author's own accounts. **WhatsApp has not been
 >   tried against Meta's sandbox by anyone else**: expect to adjust the message template and buttons.
 > - **One process only.** SQLite and the in-process scheduler do not support several copies running at once: `serve` takes a lock on the database and a second copy
->   refuses to start. The database carries a schema version (a newer file is refused untouched; an older one is copied aside, then upgraded; the core is at version 2, whose one migration adds the table of scheduled-job records and is tested on a real version-1 file; the stock pack's tables are at version 4, whose migration adds columns to two existing tables and is tested on a real version-3 file). `erp-agents backup` / `restore` / `doctor` are described in section 7c.
+>   refuses to start. The database carries a schema version (a newer file is refused untouched; an older one is copied aside, then upgraded; the core is at version 3, whose migrations add the table of scheduled-job records (2) and the ids of the messages the channels delivered (3), and are tested on real older files; the stock pack's tables are at version 4, whose migration adds columns to two existing tables and is tested on a real version-3 file). `erp-agents backup` / `restore` / `doctor` are described in section 7c.
 > - **This is a standalone Python service (FastAPI + SQLite). It is not a Frappe app and is not on the Frappe Marketplace**, and cannot be installed from it. A Frappe app
 >   would be a separate port that reuses the business logic and replaces the edges: nothing of it is started. What it would take: [docs/FRAPPE_APP_PLAN.md](docs/FRAPPE_APP_PLAN.md),
 >   [docs/PUBLISHING_PLAN.md](docs/PUBLISHING_PLAN.md) and [docs/DEVELOPING.md](docs/DEVELOPING.md).
@@ -434,7 +434,7 @@ Keep the server on localhost or behind HTTPS.
 
 ### 7b. Security (penetration test of 19 Oct 2026)
 
-Full report with what was found, fixed and still open: [docs/PENTEST_REPORT.md](docs/PENTEST_REPORT.md). What it means for you day to day:
+Full report with what was found, fixed and still open: [docs/PENTEST_REPORT.md](docs/PENTEST_REPORT.md). Every check of that test, and of the reviews after it, is now a test that runs in CI; [docs/SECURITY_CHECKS.md](docs/SECURITY_CHECKS.md) lists each with the test that proves it, what the same property is in a Frappe app, and what is not tested. What it means for you day to day:
 
 * **Keys.** The console key in `.env` (`ERP_AGENTS_OWNER_TOKEN`) must be long and random (24+ characters); there is no fallback value. A short key works only on this machine, never through a tunnel. The well-known demo key (`demo-owner-token`) is refused outright: the program does not start with it unless the settings say `auth.allow_demo_key: true`, which is accepted only with the built-in demo ERP (it is set in `config/settings.yaml`, the demo, and nowhere else).
 * **What a visitor through the tunnel can reach** (`server.remote_access`): `full` (console, sign-in, API and webhooks) or `webhooks_only` (only the WhatsApp/Telegram webhooks and a liveness check; everything else answers 404). Choose `webhooks_only` if nobody needs the console away from this machine.
@@ -458,6 +458,10 @@ erp-agents restore FILE --force   # stop the application first; the database it 
 ### 7d. Watching it run: logs, `/ready`, metrics, traces
 
 Every agent task has an id that appears on every log line it causes (`[task=...]`), so one question can be followed from its first line to its last. `GET /ready`, beside the plain `/health`, says whether the database accepts a write and the scheduler is alive (200 or 503). Prometheus metrics at `/metrics` and OpenTelemetry traces are optional and off until you switch them on in the `observability:` section; log lines can be written as JSON for a log collector. No key, token or phone number reaches a log, and no question, answer or item is in a metric or a trace. How to read it all, every metric, and three alert rules (an approval stuck, answers falling back to the plain rules, repeated ERPNext errors): [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md).
+
+### 7e. When something fails
+
+When ERPNext or the language model keeps failing, the assistant stops asking it for a while and says so once (a circuit breaker) instead of making every person wait for a timeout, and it never invents a figure meanwhile. A lost answer from ERPNext never makes a second draft, and if the program stops right after ERPNext made a draft, the next start records the answer that was given. A message that WhatsApp or Telegram delivers twice is answered once. Each person is limited per minute for questions and for actions that start a language-model task, and the refusal says how many seconds to wait. What each part does, with the test that proves it: [docs/RESILIENCE.md](docs/RESILIENCE.md).
 
 ## 8. How it fits the bigger ERP-agents design
 
@@ -669,7 +673,7 @@ erp-agents --config config/settings.erpnext.yaml mcp                      # the 
 
 Design, the tools, the checks, measured speed on a laptop CPU and the limits: [docs/AGENTS.md](docs/AGENTS.md).
 
-The assistant's answers are checked on every change: 100 golden questions are replayed in CI with a scripted stand-in for the language model (bad replies included), and the build fails when a wrong reply could reach a person, when something is written to ERPNext, or when a request is prepared that nobody asked for. The same questions can be run on a real model, and on two side by side: [docs/EVALUATION.md](docs/EVALUATION.md).
+The assistant's answers are checked on every change: 122 golden questions are replayed in CI with a scripted stand-in for the language model (bad replies included), and the build fails when a wrong reply could reach a person, when something is written to ERPNext, or when a request is prepared that nobody asked for. The same questions can be run on a real model, and on two side by side: [docs/EVALUATION.md](docs/EVALUATION.md).
 
 ## 8g. Purchasing follow-up and stock intelligence
 
@@ -767,7 +771,7 @@ The short list of what the project does not do, and how each part was tested, is
 - Usage is derived from outgoing movements; it does not know about planned promotions or one-off
   bulk orders (the "busy week" line and confidence notes flag lumpy demand, but they do not remove it).
 - ERPNext adapter: tested against v16 only. PO arrival dates come from `schedule_date`.
-- Single instance: SQLite and the in-process scheduler do not support several replicas (a second `serve` is refused). Schema versioning and numbered migrations exist (the core is at version 2, whose one migration adds the table of scheduled-job records and is tested on a real version-1 file; the stock pack's tables are at version 4, whose migration adds columns to two existing tables and is tested on a real version-3 file).
+- Single instance: SQLite and the in-process scheduler do not support several replicas (a second `serve` is refused). Schema versioning and numbered migrations exist (the core is at version 3, whose migrations add the table of scheduled-job records (2) and the ids of the messages the channels delivered (3), and are tested on real older files; the stock pack's tables are at version 4, whose migration adds columns to two existing tables and is tested on a real version-3 file).
 - Chat approvers are identified by the address in `settings.yaml` and are not re-checked against ERPNext at reply time.
 - WhatsApp: only delivered live on the author's own account; see the status note at the top.
 - Licence: GPL-3.0-or-later (see `LICENSE`), which the Frappe Cloud Marketplace accepts (open source under MIT or a GPL-compatible licence). That is a licence statement only: this repository is not a Frappe app and is not listed on the Marketplace.

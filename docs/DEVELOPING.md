@@ -108,6 +108,10 @@ These are the checks a pack cannot opt out of, because they live in the core and
 
 17. **What someone may need to follow is visible, and nothing private is in it.** A new log line about what the assistant did goes through `obs.event` (names, numbers, outcomes: never a question, an answer, a prompt, a document or a person); a new metric is registered in `core/metrics.py` with a bounded set of label values; a new span is `tracing.span` with names and counts; a new scheduled job is registered through `scheduler.tracked` and returns `False` when it failed. Never log a secret on the assumption that the scrubber will catch it. These modules import no web or scheduler library. The tables in [OBSERVABILITY.md](OBSERVABILITY.md) are compared with the code by a test (`tests/test_obs_docs.py`), so a metric, event or span that is not documented fails the build.
 
+18. **Whatever depends on another system fails safe, and says so.** A new HTTP dependency gets a circuit breaker (`guard_session` in `core/httpguard.py`); a new kind of request whose answer creates something elsewhere registers a `reconcile` hook (`KindHandler`), so an answer the program stopped before writing down is finished at the next start; a new channel gives every `InboundEvent` the id its provider assigned (`external_id`); a new action that starts a model task is limited (`model_limit`); and a client reads what a server sends as untrusted input (`core/agents/llm.py`: `_dict`, `_list`, `_text`, `_count`). The tables in [RESILIENCE.md](RESILIENCE.md) are compared with the code by `tests/test_resilience_docs.py`, and every test it names must exist.
+
+19. **A new way in is decided, tested and listed.** A new route has a row in the table of routes of [SECURITY_CHECKS.md](SECURITY_CHECKS.md) (who may use it) or the build fails (`tests/test_routes_sweep.py`); text from outside (a name, a title, a question, a tool's result) reaches a language model only through `core/prompting.py`, never pasted into a prompt, and a new path of that kind gets a case in `tests/evals/cases/15_adversarial.yaml`; a value put into the console's markup goes through `esc()`; and the app never implements its own login in the Frappe port (the Marketplace asks that base behaviour is not overridden). Each security check has a row in the register with the test that proves it and the Frappe equivalent, and the register is compared with the code by `tests/test_security_register.py`.
+
 ## Audit (21 Oct 2026): where the rules are not met yet
 
 (Paths are as of the restructure of 25 Oct 2026: the stock files are under `packs/stock_procurement/`, the shared ones under `core/`. Nothing in the audit changed with the move.)
@@ -122,9 +126,9 @@ SQL outside the repository classes (rule 1), about a dozen calls, each easy to m
 
 Done already: the conversation no longer reads the `deliveries` table itself (`ApprovalService.approval_for_message`).
 
-Threads and in-memory state (rules 2 and 3): the chat throttle (`packs/stock_procurement/assistant/chat.py`), the conversation worker pool and its "waiting for an answer" memory
+Threads and in-memory state (rules 2 and 3): the conversation worker pool and its "waiting for an answer" memory
 (`packs/stock_procurement/assistant/conversation.py`), the sign-in sessions (`core/auth/sessions.py`), the storage lock (`core/storage.py`) and the scheduler. In a multi-worker Frappe site
-these must live in the cache or the database, and the conversation's follow-up work becomes a queued job.
+these must live in the cache or the database, and the conversation's follow-up work becomes a queued job. (The chat throttle and the per-chat message limit, once two private deques, are since Phase 3 one `Limits` in `core/resilience.py` behind a `RateLimiter` interface, and the circuit breakers keep their state in a `BreakerStore`: a cache can replace either; see [RESILIENCE.md](RESILIENCE.md).)
 `core/agents/service.py` adds to that list: one agent task runs at a time behind a lock, and `submit` / `on_submitted` start a background thread so a web request or a
 new approval never waits minutes for a model. Each of those becomes a `frappe.enqueue` job (the task row already exists before the work starts, so polling by task
 id carries over unchanged). The tools, the runtime and the checks have no threads of their own.

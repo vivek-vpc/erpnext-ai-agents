@@ -18,13 +18,14 @@ from types import SimpleNamespace
 from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from ..approvals.inbound import process_inbound
 from ..auth.erpnext import LoginError, Verification
-from .. import metrics
+from .. import metrics, resilience
 from ..acting import acting_as
 from ..bootstrap import App
 from ..common import Actor
@@ -88,6 +89,13 @@ def create_app(app_ctx: App, on_system_change=None, lifespan=None) -> FastAPI:
 
     api = FastAPI(title="ERP Agents", version="0.1.0", lifespan=run_lifespans,
                   docs_url="/docs" if docs else None, redoc_url="/redoc" if docs else None, openapi_url="/openapi.json" if docs else None)
+    @api.exception_handler(RequestValidationError)
+    async def invalid_request(request: Request, exc: RequestValidationError) -> JSONResponse:
+        """A request that does not fit is refused with what is wrong and where, never with what the caller sent: the standard answer repeats the offending value, and a value nested a thousand
+        levels deep (the penetration test of 19 Oct, T9) made the program fail while writing that answer."""
+        problems = [{"loc": [p if isinstance(p, int) else str(p)[:60] for p in list(e.get("loc") or ())[:8]], "msg": str(e.get("msg") or "")[:200], "type": str(e.get("type") or "")[:60]} for e in exc.errors()[:20]]
+        return JSONResponse({"detail": problems}, status_code=422)
+
     if on_system_change:
         # the system and agent settings reschedule, and so does any section a pack names in `reschedule_scopes` (the stock pack: its follow-up times)
         ctx.settings.on_change(lambda scope, key: on_system_change() if scope in ("system", "agents", *(getattr(ctx, "reschedule_scopes", None) or ())) else None)
@@ -220,7 +228,8 @@ def create_app(app_ctx: App, on_system_change=None, lifespan=None) -> FastAPI:
             current_actor(request)
         except HTTPException:
             return {"ok": True}
-        return {"ok": True, "erp_reachable": ctx.erp.healthcheck(), "channels": sorted(ctx.channels)}
+        return {"ok": True, "erp_reachable": ctx.erp.healthcheck(), "channels": sorted(ctx.channels),
+                "dependencies": resilience.BREAKERS.states(include=("erpnext",))}          # closed = asked as usual, open = not asked for a while because it keeps failing
 
     @api.get("/ready")
     def ready(request: Request) -> JSONResponse:

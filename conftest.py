@@ -76,18 +76,27 @@ def clock():
     return FakeClock()
 
 
+@pytest.fixture(autouse=True)
+def _fresh_circuit_breakers():
+    """The circuit breakers are shared by every HTTP session in the process (core/resilience.py): each test starts with them all closed and leaves none open for the next."""
+    from erp_agents.core import resilience
+    resilience.configure(resilience.ResilienceSettings())
+    yield
+    resilience.configure(resilience.ResilienceSettings())
+
+
 @pytest.fixture
 def make_app(clock):
-    def _make(erp=None, channels=None, cfg=None, http=None):
+    def _make(erp=None, channels=None, cfg=None, http=None, db_path=":memory:"):
         base = copy.deepcopy(DEFAULT_CONFIG)
-        base["database"]["path"] = ":memory:"
+        base["database"]["path"] = db_path                              # a file, to start the application again on the same data
         base["conversation"] = {"synchronous": True}                    # messages typed to the assistant are handled on the spot, so tests need not wait for a worker thread
         base.setdefault("auth", {})["min_key_length"] = 1             # the tests use short access keys; the length rule has its own tests (test_hardening.py)
         base["auth"]["access_keys"] = "anywhere"                       # TestClient calls from a non-local address; the real default (local only) has its own tests (test_security_phase1.py)
         base.setdefault("system", {})["stock_alerts"] = False        # these tests exercise the request flow; stock alerts (sent before it) have their own tests
         for k, v in (cfg or {}).items():
             base[k] = {**base.get(k, {}), **v} if isinstance(v, dict) and isinstance(base.get(k), dict) else v
-        app = build_app(config=base, clock=clock, erp=erp, channels=channels, http=http, db_path=":memory:")
+        app = build_app(config=base, clock=clock, erp=erp, channels=channels, http=http, db_path=db_path)
         console = app.channels.get("console")
         if console is not None:
             console.writer = lambda s: None

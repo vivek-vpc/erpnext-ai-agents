@@ -25,7 +25,7 @@ from .storage import SCHEMA, SCHEMA_VERSION
 # Tables that are made when the file is opened, so a complete database (or backup) from a version before them simply does not have them yet:
 # pack_schema, and audit_chain (the decision history's seal: it seals the older decisions on the first start).
 MADE_ON_OPEN = ("pack_schema", "audit_chain")
-TABLE_SINCE = {"job_runs": 2}                         # tables that came with a later schema version: a file of an earlier version does not have them, and is not damaged for that
+TABLE_SINCE = {"job_runs": 2, "inbound_seen": 3}                         # tables that came with a later schema version: a file of an earlier version does not have them, and is not damaged for that
 REQUIRED_TABLES = tuple(t for t in dict.fromkeys(re.findall(r"CREATE TABLE IF NOT EXISTS (\w+)", SCHEMA)) if t not in MADE_ON_OPEN)
 
 

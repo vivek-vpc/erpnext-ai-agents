@@ -104,6 +104,18 @@ server:
 #   service_name: erpnext-ai-agents
 #   pending_hours: 24            # a request waiting longer than this is a backlog: `erp-agents doctor` warns, and the example alert rule in the doc uses the same number
 
+# ---------------------------------------------------------------- When a service fails, and when a person asks too often (optional; see docs/RESILIENCE.md)
+# Read once at start-up. Without the section these are the values.
+# resilience:
+#   erpnext_failures: 5          # failed requests to ERPNext in a row after which the application stops asking it for a while (and says so once)
+#   erpnext_pause_seconds: 30    # how long it stops before it tries one request again
+#   model_failures: 3            # the same for a language model
+#   model_pause_seconds: 60
+#   chat_per_minute: 20          # questions to the assistant per person per minute
+#   channel_chat_per_minute: 6   # messages from one WhatsApp or Telegram chat per minute that may reach the assistant
+#   model_per_minute: 6          # actions per person per minute that start a language-model task (Ask why, an agent question, a brief, a review)
+#   inbound_memory_days: 7       # how long the ids of channel messages are remembered, to recognise one that a channel delivers again
+
 # ---------------------------------------------------------------- AI agents and the MCP server (optional; see docs/AGENTS.md and docs/PRIVACY.md)
 # Needs:  pip install "erpnext-ai-agents[agents]"   and a model that supports tool calling, for example:  ollama pull llama3.1
 # These are the starting values. The same choices are on the Settings > AI agents screen, which overrides this file.

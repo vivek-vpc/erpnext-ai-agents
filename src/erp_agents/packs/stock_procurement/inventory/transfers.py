@@ -15,7 +15,7 @@ from typing import Any, Optional
 
 from erp_agents.core import acting
 from erp_agents.core.approvals.models import ApprovalRecord, Decision, DecisionRefused
-from erp_agents.core.approvals.service import KindHandler
+from erp_agents.core.approvals.service import KindHandler, parse_approver
 from erp_agents.core.common import iso, short_id, untrusted
 from erp_agents.core.erp.base import StockTransferDraft
 from .analysis import _n, where_stock_is
@@ -30,7 +30,8 @@ class StockTransfers:
     def __init__(self, app: Any) -> None:
         self.app = app
         app.approvals.register_handler(KIND_TRANSFER, KindHandler(on_decision=self._on_decision, on_expired=self._closed("expired", "no answer before the request expired"),
-                                                                 on_cancelled=self._closed("cancelled", None), outcome_detail=self._outcome_detail))
+                                                                 on_cancelled=self._closed("cancelled", None), outcome_detail=self._outcome_detail,
+                                                                 reconcile=self._reconcile))
 
     # ---------------------------------------------------------------- records
     def get(self, transfer_id: str) -> Optional[dict[str, Any]]:
@@ -132,6 +133,10 @@ class StockTransfers:
         if t["entry_name"]:                                          # already made (a retry after a later failure)
             self._set(t["id"], status="created", status_note=f"approved by {who}; draft {t['entry_name']}")
             return
+        recovered = decision.params.get("recovered_document")        # finishing an answer after a restart: the draft is already in the ERP
+        if recovered:
+            self._set(t["id"], status="created", entry_name=str(recovered), status_note=f"approved by {who}; draft {recovered} (found in ERPNext after a restart, where it had been made before the answer was written down)")
+            return
         make = getattr(self.app.erp, "create_stock_transfer", None)
         if make is None:
             raise DecisionRefused("This ERP connection cannot create stock transfers.")
@@ -144,6 +149,23 @@ class StockTransfers:
             raise RuntimeError(f"the ERP did not accept the stock transfer: {result.error}")      # rolls the decision back: the person can press the button again
         by = f"created under {who_acting.user}'s own ERPNext login" if who_acting else "created by the service account, with the approver's name on it"
         self._set(t["id"], status="created", entry_name=result.name, status_note=f"approved by {who}; draft {result.name} ({by})")
+
+    def _reconcile(self, record: ApprovalRecord) -> Optional[Decision]:
+        """Was the draft stock transfer already made in the ERP, though the answer was never written down? See ProcurementAgent._reconcile."""
+        find = getattr(self.app.erp, "find_by_reference", None)
+        t = self.by_approval(record.id)
+        if find is None or t is None or t["status"] not in OPEN:
+            return None
+        found = find("Stock Entry", t["id"])
+        if found is None:
+            return None
+        who = parse_approver(found.approved_by)
+        if who is None:
+            self.app.approvals.warn_once(f"approver:{record.id}", "request %s: %s exists in the ERP, but the approver written on it cannot be read, so the answer was not recorded. "
+                                         "Answer the request again (it will find %s) or cancel it.", record.id, found.name, found.name)
+            return None
+        return Decision(approval_id=record.id, action="approve", actor_id=who[0], channel=who[1], params={"recovered_document": found.name}, decided_at=self.app.clock(),
+                        note="finished after a restart: the draft already existed in ERPNext")
 
     def _acting_for(self, actor_id: str) -> Optional[acting.ActingAs]:
         """The approver's own ERPNext session when the answer came from their signed-in console session (ERPNext then records THEM and checks THEIR permissions), else None:

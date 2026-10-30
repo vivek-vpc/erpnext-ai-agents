@@ -96,11 +96,13 @@ class AgentScheduler:
     def _maintenance_job(self) -> bool:
         try:
             svc = self.app.approvals
+            svc.inbound.purge()                          # the ids of old messages are forgotten after the set number of days
+            recovered = svc.reconcile_pending()          # an answer the ERP already acted on is finished BEFORE its request can expire (and be asked again as a new one)
             expired, reminded, retried = svc.expire_due(), svc.remind_due(), svc.retry_failed_deliveries()
             if self.app.audit is not None:
                 self.app.audit.sweep()                   # anything closed that a failed seal missed
-            if expired or reminded or retried:
-                log.info("approvals: expired=%d reminded=%d redelivered=%d", len(expired), len(reminded), retried)
+            if expired or reminded or retried or recovered:
+                log.info("approvals: expired=%d reminded=%d redelivered=%d recovered=%d", len(expired), len(reminded), retried, len(recovered))
             return True
         except Exception:  # noqa: BLE001
             log.exception("approval maintenance failed")

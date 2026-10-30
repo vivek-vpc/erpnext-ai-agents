@@ -56,7 +56,7 @@ class StockProcurementPack(Pack):
         inventory.order_settled = procurement.order_settled                 # a quiet period ends when its order is done
         procurement.on_order_removed = inventory.end_quiet_period           # and when the order is cancelled
         assistant = AssistantService(app.db, app.settings, app.approvals, alerts, proposals, app.clock)
-        chat = ChatService(app.erp, inventory, procurement, proposals, app.approvals, app.settings, app.db, app.clock)
+        chat = ChatService(app.erp, inventory, procurement, proposals, app.approvals, app.settings, app.db, app.clock, limits=app.limits)
         app.services.update(alerts=alerts, inventory=inventory, proposals=proposals, procurement=procurement, assistant=assistant, chat=chat)
         app.services.update(followup=FollowUp(app), stock_insight=StockInsight(app), transfers=StockTransfers(app))
         self._history_context(app)
@@ -66,7 +66,7 @@ class StockProcurementPack(Pack):
         if "whatsapp" in app.channels and hash_key_state() != "ok":
             log.warning("%s is %s: a vendor's WhatsApp reply cannot be recognised until you put a long random value (32+ characters) in .env (see .env.example).",
                         HASH_KEY_ENV, "not set" if hash_key_state() == "missing" else "shorter than 32 characters")
-        app.conversation = Conversation(app.approvals, assistant, chat, app.router, synchronous=bool((cfg.get("conversation") or {}).get("synchronous")))
+        app.conversation = Conversation(app.approvals, assistant, chat, app.router, synchronous=bool((cfg.get("conversation") or {}).get("synchronous")), limits=app.limits)
 
         app.approvals.no_reminder_kinds.update(NO_REMINDER_KINDS)
         for channel in app.channels.values():

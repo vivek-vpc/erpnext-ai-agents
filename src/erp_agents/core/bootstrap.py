@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
-from . import metrics, obs, tracing
+from . import metrics, obs, resilience, tracing
 from .audit import AuditChain
 from .history import DecisionHistory
 from .jobs import JobLog
@@ -67,6 +67,8 @@ class App:
     observability: Optional[Any] = None             # the `observability:` section (obs.py ObsSettings): log format, metrics, tracing
     job_log: Optional[Any] = None                   # when each scheduled job last ran and how it ended (jobs.py)
     scheduler: Optional[Any] = None                 # the running scheduler, set by `serve` (None in a process that only reads or answers one command): /ready looks at it
+    resilience: Optional[Any] = None                # the `resilience:` section (resilience.py ResilienceSettings): breaker limits, rate limits, how long channel message ids are kept
+    limits: Optional[Any] = None                    # the per-person rate limits (resilience.py Limits); one set for the whole application
 
     def __getattr__(self, name: str) -> Any:
         # reached only when the application itself has no such attribute: a service a pack provided
@@ -110,6 +112,11 @@ def build_app(
         observability = obs.settings_from(cfg)
     except ValueError as exc:
         raise StartupRefused(str(exc)) from None
+    try:
+        resilience_settings = resilience.settings_from(cfg)
+    except ValueError as exc:
+        raise StartupRefused(str(exc)) from None
+    resilience.configure(resilience_settings)    # fresh circuit breakers with these limits; the HTTP sessions look them up at each request
     obs.register_secrets_from_config(cfg)       # so that no log line, in any format, can carry a key, a token or a phone number that this configuration holds
     try:
         tracing.configure(observability.tracing, observability.otlp_endpoint, observability.service_name)       # off by default; on, it needs the `otel` extra and says so if it is missing
@@ -162,6 +169,8 @@ def build_app(
                             recheck_seconds=float(auth_cfg.get("recheck_minutes", 15)) * 60) if login else None
     app = App(cfg, db, settings, erp, channels, router, approvals, workorders, tokens, clock, packs,
               login=login, sessions=sessions, throttle=LoginThrottle() if login else None, observability=observability)
+    app.resilience, app.limits = resilience_settings, resilience.Limits(resilience_settings)
+    approvals.inbound.memory_days = resilience_settings.inbound_memory_days
     app.agent_log = AgentLog(db, clock)
     app.job_log = JobLog(db, clock)
     app.toolkit = Toolkit(app, log_call=app.agent_log.log_tool)

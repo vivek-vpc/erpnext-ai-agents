@@ -15,7 +15,6 @@ from __future__ import annotations
 import logging
 import re
 import time
-from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
@@ -23,12 +22,12 @@ from typing import Any, Callable, Optional
 from erp_agents.core.approvals.channels.base import Channel
 from erp_agents.core.approvals.models import DecisionResult, InboundEvent, Recipient
 from erp_agents.core.approvals.router import ApprovalRouter
+from erp_agents.core.resilience import Limits, RateLimited, ResilienceSettings
 from .chat import ChatLimit
 
 log = logging.getLogger(__name__)
 WAIT_SECONDS = 600                 # how long the bot waits for the answer to its own question
 CONTEXT_SECONDS = 900              # "compare vendors" after a question about an item still means that item, for this long
-PER_MINUTE = 6                     # messages per person per minute that may reach the local model
 ORDER_KINDS = ("procurement.po", "procurement.pr")
 YES_NO = {"y": "yes", "yes": "yes", "yeah": "yes", "yep": "yes", "ok": "yes", "okay": "yes", "sure": "yes", "confirm": "yes", "yes cancel it": "yes", "yes, cancel it": "yes",
           "n": "no", "no": "no", "nope": "no", "no keep it": "no", "no, keep it": "no", "keep it": "no"}
@@ -63,12 +62,12 @@ class _Context:
 
 class Conversation:
     def __init__(self, approvals: Any, assistant: Any, chat: Any, router: ApprovalRouter, synchronous: bool = False,
-                 clock: Callable[[], float] = time.monotonic) -> None:
+                 clock: Callable[[], float] = time.monotonic, limits: Optional[Limits] = None) -> None:
         self.approvals, self.assistant, self.chat, self.router, self.clock = approvals, assistant, chat, router, clock
+        self.limits = limits or getattr(chat, "limits", None) or Limits(ResilienceSettings())       # one set of limits for the whole application
         self._pool = None if synchronous else ThreadPoolExecutor(max_workers=2, thread_name_prefix="conversation")
         self._awaiting: dict[tuple[str, str], _Awaiting] = {}
         self._context: dict[tuple[str, str], _Context] = {}
-        self._asked: dict[tuple[str, str], deque] = {}
 
     # ------------------------------------------------------------------ entry points
     def expect(self, channel: str, sender: str, approval_id: str, action: str, choices: Optional[list[dict[str, str]]] = None) -> None:
@@ -108,8 +107,10 @@ class Conversation:
             if self._answer_prompt(waiting, text, actor, event, reply):
                 return                                              # anything else is a new question: the old one is dropped
 
-        if not self._allowed(key):
-            reply("That is a lot of questions in a minute. Please wait a little.")
+        try:
+            self.limits.enforce("channel_chat", f"{key[0]}:{key[1]}")            # messages per chat per minute that may reach the assistant
+        except RateLimited as exc:
+            reply(str(exc))                                                      # says how many seconds to wait
             return
         resend = lambda approval_id: self._resend(approval_id, recipient, event)       # noqa: E731
         approval_id = self._request_replied_to(event)
@@ -219,16 +220,6 @@ class Conversation:
         for act in out.get("actions") or []:                         # "a request is already waiting": put it in front of this person again, below the answer
             if act.get("resend") and act.get("approval_id") and resend is not None:
                 resend(act["approval_id"])
-
-    def _allowed(self, key: tuple[str, str]) -> bool:
-        q = self._asked.setdefault(key, deque())
-        now = self.clock()
-        while q and now - q[0] > 60:
-            q.popleft()
-        if len(q) >= PER_MINUTE:
-            return False
-        q.append(now)
-        return True
 
 
 def render(out: dict[str, Any]) -> str:

@@ -70,6 +70,10 @@ Logger `erp_agents.calls`. Each says what happened, never what was said: no ques
 | `erpnext_request` | one request to ERPNext | `method`, `kind` (the document type or method asked for, never the query), `status`, `ms`, `error` |
 | `llm_request` | one HTTP request to a model server | `method`, `kind` (the path, such as `/api/chat`), `status`, `ms`, `error` |
 | `job_run` | a scheduled job ended | `job`, `ok`, `error` |
+| `circuit_change` | the application stopped asking a service that keeps failing, tried it again, or went back to asking ([RESILIENCE.md](RESILIENCE.md)) | `dependency`, `state` (open, half_open, closed), `failures`, `reason` |
+| `rate_limited` | a person asked too often and was told to wait | `scope` (chat, channel_chat, model), `wait_seconds` (never who asked or what) |
+| `inbound_duplicate` | a channel delivered a message again and it was ignored ([RESILIENCE.md](RESILIENCE.md)) | `channel` (never the message or its id) |
+| `decision_recovered` | an answer was finished at start-up or by the housekeeping job because the ERP already had the document it leads to ([RESILIENCE.md](RESILIENCE.md)) | `kind`, `action` |
 <!-- /log:events -->
 
 A failure is a `WARNING` line with the **class** of the error (for example `ConnectTimeout`), not its text.
@@ -88,7 +92,7 @@ It makes changes visible only where it recognises something. It cannot know a se
 
 They answer different questions, so a monitor can tell "up" from "up but stuck".
 
-- **`GET /health`** is unchanged: the process is answering. Anybody may call it, even through a tunnel; signed in, it also asks ERPNext (`erp_reachable`) and names the channels.
+- **`GET /health`** is unchanged: the process is answering. Anybody may call it, even through a tunnel; signed in, it also asks ERPNext (`erp_reachable`), names the channels, and says whether the application is asking each dependency as usual or has stopped for a while because it keeps failing (`dependencies`: `closed` or `open`, see [RESILIENCE.md](RESILIENCE.md)).
 - **`GET /ready`** says whether the assistant can do its work: **200** when all of these hold, **503** when any does not.
   1. *database*: it accepts a write (a real, empty write transaction, which fails the way a real write does on a read-only file, a full disk or a lock held by another process). When another process holds the database's write lock, the check waits up to 5 seconds before it answers 503, so give a probe a timeout of 10 seconds;
   2. *migrations*: the database is the shape this version needs;
@@ -148,6 +152,12 @@ scrape_configs:
 | `erp_agents_scheduler_job_runs_total` | counter | `job`, `outcome` | Scheduled jobs that ran (ok, failed, missed). |
 | `erp_agents_scheduler_lag_seconds` | gauge | `job` | How late the last run of a job started. |
 | `erp_agents_scheduler_last_success_timestamp_seconds` | gauge | `job` | When a job last finished well (Unix time). |
+| `erp_agents_circuit_state` | gauge | `dependency` | The circuit breaker of a dependency: 0 closed (asking as usual), 1 half open (one trial request), 2 open (not asking). |
+| `erp_agents_circuit_transitions_total` | counter | `dependency`, `to` | Changes of a circuit breaker, by dependency and the state it changed to. |
+| `erp_agents_circuit_refused_total` | counter | `dependency` | Requests not sent because the circuit of the dependency was open. |
+| `erp_agents_rate_limited_total` | counter | `scope` | Requests refused because a person asked too often (chat, channel_chat, model). |
+| `erp_agents_inbound_duplicates_total` | counter | `channel` | Messages that a channel delivered again and the application ignored. |
+| `erp_agents_decisions_recovered_total` | counter | `kind` | Answers finished at start-up because the document they led to already existed in ERPNext. |
 | `erp_agents_metric_series_dropped_total` | counter | | Label combinations refused because a metric held 300 already. |
 <!-- /metrics:table -->
 

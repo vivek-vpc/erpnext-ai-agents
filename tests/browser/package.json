@@ -1,0 +1,10 @@
+{
+  "name": "erpnext-ai-agents-console-dom-test",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Runs the real console in jsdom against hostile data (tests/test_console_dom.py). Test tooling only: nothing here is shipped.",
+  "license": "GPL-3.0-or-later",
+  "dependencies": {
+    "jsdom": "30.1.1"
+  }
+}

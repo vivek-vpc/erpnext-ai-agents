@@ -211,6 +211,12 @@ FALLBACKS = REGISTRY.counter("erp_agents_agent_fallbacks_total", "Agent tasks an
 JOB_RUNS = REGISTRY.counter("erp_agents_scheduler_job_runs_total", "Scheduled jobs that ran, by job and outcome (ok, failed or missed).", ("job", "outcome"))
 JOB_LAG = REGISTRY.gauge("erp_agents_scheduler_lag_seconds", "How late the last run of a scheduled job started, against the time it was due.", ("job",))
 JOB_LAST_OK = REGISTRY.gauge("erp_agents_scheduler_last_success_timestamp_seconds", "When a scheduled job last finished well (Unix time).", ("job",))
+CIRCUIT_STATE = REGISTRY.gauge("erp_agents_circuit_state", "The circuit breaker of a dependency: 0 closed (asking as usual), 1 half open (one trial request), 2 open (not asking).", ("dependency",))
+CIRCUIT_TRANSITIONS = REGISTRY.counter("erp_agents_circuit_transitions_total", "Changes of a circuit breaker, by dependency and the state it changed to.", ("dependency", "to"))
+CIRCUIT_REFUSED = REGISTRY.counter("erp_agents_circuit_refused_total", "Requests not sent because the circuit of the dependency was open.", ("dependency",))
+RATE_LIMITED = REGISTRY.counter("erp_agents_rate_limited_total", "Requests refused because a person asked too often, by kind of limit (chat, channel_chat, model).", ("scope",))
+INBOUND_DUPLICATES = REGISTRY.counter("erp_agents_inbound_duplicates_total", "Messages that a channel delivered again and the application ignored.", ("channel",))
+DECISIONS_RECOVERED = REGISTRY.counter("erp_agents_decisions_recovered_total", "Answers finished at start-up because the document they led to already existed in ERPNext.", ("kind",))
 
 
 def configure(enabled: bool) -> None:

@@ -186,7 +186,7 @@ Then **Settings > AI agents** > "Let the AI agents help" (or `agents.enabled: tr
 
 ## Checked on every change: the AI evaluation
 
-100 golden questions run in CI on every pull request, with no model and no ERPNext: a scripted stand-in plays the model, including bad replies (an invented figure, a guess, malformed JSON), and the suite requires that each is caught, that nothing is written to ERPNext, and that no request is prepared unless the person asked. The limits are in `tests/evals/thresholds.json`. The same questions that a real model can answer can be run on it, and on a second model beside it, with `python -m tools.e2e.agents_eval --suite golden --against ...`. How it works, how to add a question, and what it found: [EVALUATION.md](EVALUATION.md).
+122 golden questions run in CI on every pull request, with no model and no ERPNext: a scripted stand-in plays the model, including bad replies (an invented figure, a guess, malformed JSON), and the suite requires that each is caught, that nothing is written to ERPNext, and that no request is prepared unless the person asked. The limits are in `tests/evals/thresholds.json`. The same questions that a real model can answer can be run on it, and on a second model beside it, with `python -m tools.e2e.agents_eval --suite golden --against ...`. How it works, how to add a question, and what it found: [EVALUATION.md](EVALUATION.md).
 
 ## Measured on the author's laptop (24 Oct 2026)
 
