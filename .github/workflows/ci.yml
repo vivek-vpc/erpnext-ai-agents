@@ -23,8 +23,20 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev,agents,otel]"
+      # The console is also tested in a DOM (Node and jsdom, pinned by tests/browser/package-lock.json): one cell of the matrix has them, and there the test is required, not skipped.
+      - uses: actions/setup-node@v4
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.13'
+        with:
+          node-version: "24"
+      - name: Install the console DOM test tools (exact versions from the lockfile) and check them for known vulnerabilities
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.13'
+        run: |
+          npm ci --prefix tests/browser
+          npm audit --prefix tests/browser
       - name: Test
         run: python -m pytest -q
+        env:
+          ERP_AGENTS_REQUIRE_BROWSER_TESTS: ${{ matrix.os == 'ubuntu-latest' && matrix.python == '3.13' && '1' || '' }}
 
   ai-evals:
     name: AI evaluation (no model, no ERPNext)
