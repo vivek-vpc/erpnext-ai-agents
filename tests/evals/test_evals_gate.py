@@ -34,6 +34,14 @@ MUTATIONS = [
     ("everybody counts as an approver", ("permissions",), lambda mp: mp.setattr(Actor, "has_role", lambda self, minimum: True)),
     ("the checked restatement accepts any reply", ("explain", "decision_history"), lambda mp: (mp.setattr(chat, "verify", _accept_everything), mp.setattr(service, "verify", _accept_everything))),
     ("the router may pick an action", ("router",), lambda mp: mp.setattr(chat, "INTENTS", (*chat.INTENTS, "order_request", "delete_everything"))),
+    # hostile text (Phase 4): the fence around what a model is shown, and the order gate's idea of "the item the person typed"
+    ("an agent reads tool results uncleaned", ("adversarial",), lambda mp: mp.setattr(runtime, "clean_json", lambda obj, *a, **k: obj)),
+    ("an agent is shown the question without the marks", ("adversarial",), lambda mp: mp.setattr(purchase_agent, "data", lambda value, limit=0: str(value))),
+    ("\"Ask why\" shows the facts raw", ("adversarial",), lambda mp: mp.setattr(service, "fact_line", lambda fact_id, text: f"{fact_id}: {text}")),
+    ("the chat shows the model the question without the marks", ("adversarial",), lambda mp: mp.setattr(chat, "data", lambda value, limit=0: str(value))),
+    ("an order is allowed for an item whose code only begins like the one typed", ("adversarial",), lambda mp: mp.setattr(purchase_agent, "mentions", lambda text, name: bool(name) and name in text)),
+    ("the order gate lets the model prepare any request, whatever the data says", ("adversarial",), lambda mp: mp.setattr(purchase_agent, "prepare_gate", lambda question, can_prepare: (lambda name, args, ev: None))),
+    ("a model's copied marks are shown to the person", ("adversarial",), lambda mp: mp.setattr(verify_module, "unfence", lambda value: value)),
 ]
 
 

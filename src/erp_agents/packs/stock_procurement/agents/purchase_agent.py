@@ -137,6 +137,11 @@ def asked_for_quotes(question: str) -> bool:
     return bool(QUOTE_ASK.search(question))
 
 
+def mentions(text: str, name: str) -> bool:
+    """Does the (lower-case) text name this item as a whole: not as the beginning, the end or the middle of a longer code or word? BOLT-M8 is not named by a question about BOLT-M8-XL."""
+    return bool(name) and re.search(r"(?<![\w-])" + re.escape(name) + r"(?![\w-])", text) is not None
+
+
 def prepare_gate(question: str, can_prepare: bool) -> Callable[[str, dict[str, Any], Evidence], Optional[str]]:
     """The only tool that does anything is allowed when the person asked for an order in so many words, and only for what they named."""
     def gate(name: str, args: dict[str, Any], ev: Evidence) -> Optional[str]:
@@ -153,7 +158,7 @@ def prepare_gate(question: str, can_prepare: bool) -> Callable[[str, dict[str, A
             return "only one order request can be prepared per question"
         code = str(args.get("item_code") or "")
         low = question.lower()
-        named = code.lower() in low or any(r.name == "stock_status" and r.ok and r.result.get("item_code") == code and str(r.result.get("item_name", "")).lower() in low for r in ev.runs)
+        named = mentions(low, code.lower()) or any(r.name == "stock_status" and r.ok and r.result.get("item_code") == code and mentions(low, str(r.result.get("item_name", "")).lower()) for r in ev.runs)
         if not named:
             return "the item must be one the person named in their request"
         if args.get("qty") is not None:

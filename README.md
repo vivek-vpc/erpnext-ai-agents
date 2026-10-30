@@ -673,7 +673,7 @@ erp-agents --config config/settings.erpnext.yaml mcp                      # the 
 
 Design, the tools, the checks, measured speed on a laptop CPU and the limits: [docs/AGENTS.md](docs/AGENTS.md).
 
-The assistant's answers are checked on every change: 100 golden questions are replayed in CI with a scripted stand-in for the language model (bad replies included), and the build fails when a wrong reply could reach a person, when something is written to ERPNext, or when a request is prepared that nobody asked for. The same questions can be run on a real model, and on two side by side: [docs/EVALUATION.md](docs/EVALUATION.md).
+The assistant's answers are checked on every change: 122 golden questions are replayed in CI with a scripted stand-in for the language model (bad replies included), and the build fails when a wrong reply could reach a person, when something is written to ERPNext, or when a request is prepared that nobody asked for. The same questions can be run on a real model, and on two side by side: [docs/EVALUATION.md](docs/EVALUATION.md).
 
 ## 8g. Purchasing follow-up and stock intelligence
 

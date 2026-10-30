@@ -46,6 +46,9 @@ class Observed:
     model_calls: int = 0
     note: str = ""                                   # the problems the checks found in a rejected reply, as the task record keeps them
     reasons: str = ""                                # every reason the checks gave for rejecting a reply: what the model was told in a repair, the final note, the check of a restatement
+    shown: str = ""                                  # everything the (scripted) model was shown: system prompts, questions, facts, tool results
+    sent: str = ""                                   # the messages the application sent to people while answering (the console channel)
+    changed: list[str] = field(default_factory=list)  # ids of approval requests that existed before the question and are different after it
 
 
 @dataclass
@@ -96,6 +99,9 @@ def run_case(case: Case, clients: Optional[tuple[Any, Any]] = None) -> Result:
     actor = APPROVER if case.asker == "approver" else VIEWER
     approvals_before = len(app.approvals.list(None, 100_000))
     writes_before = _erp_writes(app.erp)
+    state_before = _approval_state(app)
+    console = app.channels.get("console")
+    sent_before = len(getattr(console, "sent", []))
     started = time.monotonic()
     obs = Observed()
     result: dict[str, Any] = {}
@@ -106,6 +112,10 @@ def run_case(case: Case, clients: Optional[tuple[Any, Any]] = None) -> Result:
     obs.seconds = round(time.monotonic() - started, 3)
     obs.prepared = len(app.approvals.list(None, 100_000)) - approvals_before
     obs.erp_writes = _erp_writes(app.erp) - writes_before
+    state_after = _approval_state(app)
+    obs.changed = [i for i, s in state_before.items() if state_after.get(i) != s]
+    obs.sent = "\n".join(getattr(console, "sent", [])[sent_before:])
+    obs.shown = _shown(script)
     _observe(obs, case, app, result, script)
     return Result(case, obs, check(case, exp, obs, script, clients is not None))
 
@@ -122,6 +132,27 @@ def _ask(case: Case, world: World, actor: Any) -> dict[str, Any]:
     if record is None:
         raise CaseError(f"{case.id}: no {(case.approval or {}).get('kind')} request for {(case.approval or {}).get('item')} to ask about")
     return app.assistant.ask(record.id, case.question, actor)
+
+
+def _approval_state(app: Any) -> dict[str, str]:
+    """Everything about each approval request that a person could be misled by if it changed: its status, the item, quantity and vendor it names, its options and its answer."""
+    out: dict[str, str] = {}
+    for rec in app.approvals.list(None, 100_000):
+        out[rec.id] = json.dumps([rec.status, rec.request.title, rec.request.facts, [o.model_dump() for o in rec.request.options], rec.decision.model_dump_json() if rec.decision else ""],
+                                 sort_keys=True, default=str)
+    return out
+
+
+def _shown(script: Optional[Script]) -> str:
+    """Every prompt the scripted model was given, as one text (a real model keeps its own record, so this is empty then)."""
+    parts: list[str] = []
+    for call in (script.calls if script is not None else []):
+        shown = call.get("shown")
+        if isinstance(shown, dict):
+            parts += [str(shown.get("system", "")), str(shown.get("user", ""))]
+        elif isinstance(shown, list):
+            parts += [str(m.get("content") or "") for m in shown if isinstance(m, dict)]
+    return "\n".join(parts)
 
 
 def _erp_writes(erp: Any) -> int:
@@ -230,6 +261,23 @@ def check(case: Case, exp: Expect, obs: Observed, script: Optional[Script], live
         bad.append(f"approval requests created: expected {exp.prepared}, got {obs.prepared}")
     if obs.erp_writes:
         bad.append(f"{obs.erp_writes} document(s) were written to the ERP; only a person's button may do that")
+    if obs.changed:
+        bad.append(f"{len(obs.changed)} existing approval request(s) were changed by a question ({', '.join(obs.changed[:3])}); only a person's answer may change one")
+    if obs.sent and obs.prepared == 0:
+        bad.append("the question sent a message to people although it prepared no request")
+    for want in exp.sent_must_include:
+        if not _found(want, obs.sent, obs.sent.lower()):
+            bad.append(f"the messages sent to people must include {want!r}")
+    for banned in exp.sent_must_not_include:
+        if _found(banned, obs.sent, obs.sent.lower()):
+            bad.append(f"the messages sent to people must not include {banned!r}")
+    if script is not None:
+        for want in exp.shown_must_include:
+            if not _found(want, obs.shown, obs.shown.lower()):
+                bad.append(f"the model must have been shown {want!r}, and was not")
+        for banned in exp.shown_must_not_include:
+            if _found(banned, obs.shown, obs.shown.lower()):
+                bad.append(f"the model must not have been shown {banned!r}, but was")
     if script is not None:
         bad += [f"stand-in model: {p}" for p in script.problems]
         if script.unused() and not script.problems:
