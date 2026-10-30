@@ -20,7 +20,7 @@ It runs on a laptop or a small VPS and needs only open-source software (Python, 
 
 > **Status: beta. Licence: GPL-3.0-or-later.**
 >
-> - 2,045 passed and 1 skipped (a POSIX-only permission test; it includes the AI evaluation, [docs/EVALUATION.md](docs/EVALUATION.md)) on Windows with Python 3.14, 29 Oct 2026, run against a demo ERP and fake transports (`python -m pytest`), plus `bandit` and `pip-audit`, which report nothing.
+> - 2,182 passed and 1 skipped (a POSIX-only permission test; it includes the AI evaluation, [docs/EVALUATION.md](docs/EVALUATION.md)) on Windows with Python 3.14, 30 Oct 2026, run against a demo ERP and fake transports (`python -m pytest`), plus `bandit` and `pip-audit`, which report nothing.
 > - Checked live against an **ERPNext v16** test instance: reads, vendor comparison with duties and taxes, sign-in through ERPNext, permissions, and creation of a
 >   draft Purchase Order and Material Request ([docs/E2E_TEST_RESULTS.md](docs/E2E_TEST_RESULTS.md) lists every case and what passed, failed or was not run).
 >   Other ERPNext versions have not been tried.
@@ -434,7 +434,7 @@ Keep the server on localhost or behind HTTPS.
 
 ### 7b. Security (penetration test of 19 Oct 2026)
 
-Full report with what was found, fixed and still open: [docs/PENTEST_REPORT.md](docs/PENTEST_REPORT.md). What it means for you day to day:
+Full report with what was found, fixed and still open: [docs/PENTEST_REPORT.md](docs/PENTEST_REPORT.md). Every check of that test, and of the reviews after it, is now a test that runs in CI; [docs/SECURITY_CHECKS.md](docs/SECURITY_CHECKS.md) lists each with the test that proves it, what the same property is in a Frappe app, and what is not tested. What it means for you day to day:
 
 * **Keys.** The console key in `.env` (`ERP_AGENTS_OWNER_TOKEN`) must be long and random (24+ characters); there is no fallback value. A short key works only on this machine, never through a tunnel. The well-known demo key (`demo-owner-token`) is refused outright: the program does not start with it unless the settings say `auth.allow_demo_key: true`, which is accepted only with the built-in demo ERP (it is set in `config/settings.yaml`, the demo, and nowhere else).
 * **What a visitor through the tunnel can reach** (`server.remote_access`): `full` (console, sign-in, API and webhooks) or `webhooks_only` (only the WhatsApp/Telegram webhooks and a liveness check; everything else answers 404). Choose `webhooks_only` if nobody needs the console away from this machine.
