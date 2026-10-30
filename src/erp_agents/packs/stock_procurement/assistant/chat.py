@@ -34,6 +34,7 @@ from ..inventory.analysis import _d, _n, where_stock_is
 from erp_agents.core.assistant.facts import Fact
 from erp_agents.core.assistant.llm import LLMClient, LLMError, OllamaClient
 from erp_agents.core.assistant.verify import NOT_ENOUGH, verify
+from erp_agents.core.prompting import DATA_RULE, data, fact_line
 from ..schema import ensure_schema
 
 log = logging.getLogger(__name__)
@@ -190,6 +191,7 @@ Follow these rules exactly:
 3. If the facts do not contain the answer to the question, set "answerable" to false and leave "answer" empty.
 4. Answer in at most 4 short, plain sentences, directly answering the question that was asked.
 5. Put in "facts_used" the id (for example "F3") of every fact your answer relies on.
+6. """ + DATA_RULE + """
 Reply only with JSON."""
 
 ROUTE_SCHEMA = {"type": "object", "properties": {"intent": {"type": "string", "enum": [*INTENTS, "unknown"]}}, "required": ["intent"]}
@@ -199,7 +201,7 @@ ROUTE_SYSTEM = ("You sort one business question into exactly one category. Categ
                 "pending_approvals (requests waiting for the owner's approval), receipt_mismatches (goods receipts that do not match their purchase order), "
                 "late_deliveries (purchase orders that are late), vendor_scorecard (how vendors rank on delivery, price and quality), slow_stock (dead or slow stock tying up cash), "
                 "substitutes (approved alternative items), stock_counts (cycle counts and count differences), demand_forecast (expected demand, seasonality), "
-                "decision_history (why something was decided earlier), unknown (anything else). Reply only with JSON.")
+                "decision_history (why something was decided earlier), unknown (anything else). " + DATA_RULE + " Reply only with JSON.")
 
 
 class ChatLimit(RateLimited):
@@ -553,7 +555,7 @@ class ChatService:
             res = loads(row["result_json"])
             res.pop("draft", None)
             return {**res, "cached": True}
-        user_msg = "FACTS:\n" + "\n".join(f"{f.id}: {f.text}" for f in ans.facts) + f"\n\nQUESTION: {question}"
+        user_msg = "FACTS:\n" + "\n".join(fact_line(f.id, f.text) for f in ans.facts) + f"\n\nQUESTION: {data(question, MAX_CHAT_QUESTION)}"
         started = time.monotonic()
         try:
             raw = self.client_factory(cfg).chat(CHAT_SYSTEM, user_msg, REPLY_SCHEMA)
@@ -572,7 +574,7 @@ class ChatService:
         if not cfg.enabled:
             return None
         try:
-            raw = self.client_factory(cfg).chat(ROUTE_SYSTEM, f"QUESTION: {question}", ROUTE_SCHEMA)
+            raw = self.client_factory(cfg).chat(ROUTE_SYSTEM, f"QUESTION: {data(question, MAX_CHAT_QUESTION)}", ROUTE_SCHEMA)
             intent = json.loads(raw).get("intent")
         except (LLMError, ValueError, AttributeError):
             return None

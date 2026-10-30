@@ -7,6 +7,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Optional
 
+from ..prompting import unfence
 from .facts import Fact
 
 NOT_ENOUGH = "I do not have enough information in the recorded data to answer that question."
@@ -59,7 +60,7 @@ def verify(raw: str, facts: list[Fact], question: str, max_chars: int) -> Verdic
     if not data["answerable"]:
         return Verdict("not_enough_information", NOT_ENOUGH, [], "the model said the recorded facts do not answer the question")
 
-    answer = " ".join(data["answer"].split())
+    answer = " ".join(unfence(data["answer"]).split())            # (a model that copies the marks from its prompt must not show them; nothing else is changed)
     if not answer:
         return reject("the answer was empty")
     if len(answer) > max_chars:

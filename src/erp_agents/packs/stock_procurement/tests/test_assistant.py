@@ -78,7 +78,7 @@ def test_a_grounded_answer_is_shown_with_its_sources(world):
     assert res["status"] == "answered" and res["answer"].startswith("You have 300 pcs") and res["check"] == "passed all checks"
     assert res["facts"] == [{"id": f.id, "text": f.text}] and res["cached"] is False
     system, user, schema = llm.calls[0]
-    assert "Use ONLY the numbered FACTS" in system and user.startswith("FACTS:\nF1: Request:") and user.endswith("QUESTION: Why did you raise this?")
+    assert "Use ONLY the numbered FACTS" in system and user.startswith("FACTS:\nF1: \u27e6Request:") and user.endswith("QUESTION: \u27e6Why did you raise this?\u27e7")      # text from the records and the question go in between marks
     assert schema["required"] == ["answerable", "answer", "facts_used"]
 
 

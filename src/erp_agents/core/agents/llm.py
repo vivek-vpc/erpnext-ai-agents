@@ -27,6 +27,7 @@ from ..assistant.llm import SEED, LLMError
 from ..httpguard import guard_session
 from ..netguard import no_redirects
 from ..policy import LOCAL_HOSTS, PROVIDER_LABELS, PROVIDER_URLS, AgentSettings
+from ..prompting import CLOSE, OPEN, clean
 
 __all__ = ["LLMError", "Reply", "ToolChatClient", "OllamaToolClient", "OpenAIToolClient", "AnthropicToolClient", "GeminiToolClient", "make_client", "describe", "is_remote",
            "salvage_tool_call", "KEY_ENV", "OFFICIAL_HOSTS", "key_for"]
@@ -274,7 +275,7 @@ class OpenAIToolClient(HostedClient):
             elif m["role"] == "tool":
                 match = next((p for p in pending if p[0] == m.get("tool_name")), pending[0] if pending else None)
                 if match is None:
-                    out.append({"role": "user", "content": "Result of " + str(m.get("tool_name")) + ": " + m["content"]})
+                    out.append({"role": "user", "content": "Result of " + clean(m.get("tool_name"), 60) + ": " + OPEN + str(m["content"]).replace(OPEN, " ").replace(CLOSE, " ") + CLOSE})
                 else:
                     pending.remove(match)
                     out.append({"role": "tool", "tool_call_id": match[1], "content": m["content"]})

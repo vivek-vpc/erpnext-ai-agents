@@ -12,6 +12,7 @@ from typing import Any, Callable, Optional
 from ..assistant.chat import wants_order
 from erp_agents.core.common import fmt_num
 from erp_agents.core.assistant.verify import numbers
+from erp_agents.core.prompting import MAX_QUESTION, data
 from .inventory_agent import RULES
 from erp_agents.core.agents.runtime import FINAL_REQUEST, AgentJob, Evidence, ToolRun, grounding_problems, substance_problems
 
@@ -89,7 +90,7 @@ def review_job(facts: dict[str, Any], today: str) -> AgentJob:
     def final(ev: Evidence) -> str:
         found = review_findings(facts, ev)
         done = "; ".join(f["text"] for f in found) or "nothing wrong with the vendor, the timing or the quantity"
-        return (FINAL_REQUEST + " The program has already checked the request and found: " + done + ". The approver will see these checks, so do not repeat them. "
+        return (FINAL_REQUEST + " The program has already checked the request and found: " + data(done, 900) + ". The approver will see these checks, so do not repeat them. "
                 "Give 0 to 3 short observations of your own that would help the approver, for example how the quantity compares with recent weekly use or what the order history shows. "
                 "Do not tell the approver to approve or reject, and do not contradict the checks. An empty list is fine.")
 
@@ -97,7 +98,7 @@ def review_job(facts: dict[str, Any], today: str) -> AgentJob:
         agent=AGENT, task="review", tools=REVIEW_TOOLS, schema=REVIEW_SCHEMA, check=lambda d, ev: grounding_problems(d["points"], ev), final=final, after_warm=after_warm, question=request_text,
         system="You are the purchasing agent of a small business's stock assistant. An order request is waiting for a person's approval. Your job is a short, honest second opinion for the approver. "
                "You never change the request. Today is " + today + ". " + RULES,
-        user=f"Review this waiting request: {request_text}. The tool results above show the item's stock position, the vendors compared for this quantity, and what is already on order. "
+        user=f"Review this waiting request: {data(request_text, 200)}. The tool results above show the item's stock position, the vendors compared for this quantity, and what is already on order. "
              "Use usage_history if you want to compare the quantity with recent weekly use.",
         warm=(("stock_status", {"item_code": code}), ("vendor_options", {"item_code": code, "qty": qty}), ("open_orders", {"item_code": code})))
 
@@ -196,4 +197,4 @@ def ask_job(question: str, asked_by: str, today: str, can_prepare: bool) -> Agen
         agent=agent, task="ask", tools=tools, schema=ASK_SCHEMA, check=check, question=question,
         gate=prepare_gate(question, can_prepare), rewrite=prepare_rewrite(question, asked_by),
         system="You are " + role + ". Today is " + today + "." + extra + " " + RULES,
-        user=f"QUESTION: {question}\nLook up what you need with the tools, then answer. If the tools cannot answer it, set answerable to false.")
+        user=f"QUESTION: {data(question, MAX_QUESTION)}\nLook up what you need with the tools, then answer. If the tools cannot answer it, set answerable to false.")

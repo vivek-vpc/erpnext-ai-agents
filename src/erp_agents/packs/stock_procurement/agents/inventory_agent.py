@@ -14,6 +14,7 @@ from datetime import date
 from typing import Any, Optional
 
 from erp_agents.core.common import fmt_num
+from erp_agents.core.prompting import data
 from erp_agents.core.agents.runtime import AgentJob, Evidence, ToolRun, grounding_problems
 
 AGENT = "inventory"
@@ -89,15 +90,15 @@ def digest(ev: Evidence, points: list[dict[str, str]]) -> str:
     lines = [f"Counts: {counts.get('BREACH', 0)} items below your rules, {counts.get('EARLY_WARNING', 0)} running down, {counts.get('OK', 0)} fine, {ov.get('items_total', 0)} in all.",
              "Worst items, one per line: code | name | status | on hand | uses per day | on order | arrives | lead days | quantities of requests waiting for an answer"]
     for i in (ov.get("items") or [])[:DIGEST_ITEMS]:
-        lines.append(" | ".join(str(x) for x in (i["item_code"], i.get("item_name"), i.get("status"), fmt_num(i.get("on_hand"), 2), fmt_num(i.get("daily_use"), 2), fmt_num(i.get("on_order"), 2),
+        lines.append(" | ".join(str(x) for x in (data(i["item_code"], 60), data(i.get("item_name"), 80), i.get("status"), fmt_num(i.get("on_hand"), 2), fmt_num(i.get("daily_use"), 2), fmt_num(i.get("on_order"), 2),
                                                  i.get("next_arrival") or "none", fmt_num(i.get("lead_days"), 1), ", ".join(waiting.get(i["item_code"], [])) or "none")))
     docs = [d for res in ev.results("open_orders") for d in res.get("documents", [])][:6]
     if docs:
         lines.append("Open purchase orders: order | vendor | item | still to come | due")
-        lines += [" | ".join(str(x) for x in (d["document"], d.get("vendor"), d.get("item"), fmt_num(d.get("still_to_come"), 0), d.get("due") or "no date")) for d in docs]
+        lines += [" | ".join(str(x) for x in (data(d["document"], 60), data(d.get("vendor"), 80), data(d.get("item"), 60), fmt_num(d.get("still_to_come"), 0), d.get("due") or "no date")) for d in docs]
     if points:
         lines.append("The program has already found these (do not repeat them):")
-        lines += [f"{p['item_code']}: {p['note']}" for p in points]
+        lines += [f"{data(p['item_code'], 60)}: {data(p['note'], 300)}" for p in points]
     return "\n".join(lines)
 
 
