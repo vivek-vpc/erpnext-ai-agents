@@ -10,6 +10,9 @@ rewritten (a relative import of a moved module from a module that stays becomes 
 places relative to each other); and strings that name a moved module (a `monkeypatch.setattr("erp_agents.core.x.y", ...)`, an `__import__`) are rewritten too. It does not touch the documents:
 they say `core/audit.py` and mean the same path in either package (DEVELOPING.md says so).
 
+It ran once, on 5 Nov 2026 (commit 2f4abfd). It is kept as the record of how the engine was carved out and of exactly which modules moved: it cannot be run again, because
+the modules it names are no longer where it looks.
+
 Usage: python tools/move_to_engine.py --dry-run   (prints what it would move)
        python tools/move_to_engine.py             (does it)
 """

@@ -8,10 +8,14 @@ import json
 import pkgutil
 import subprocess
 import sys
-import tomllib
 from pathlib import Path
 
 import pytest
+
+try:
+    import tomllib
+except ModuleNotFoundError:                       # Python 3.10, which the engine and the service support, has no tomllib
+    import tomli as tomllib
 
 ROOT = Path(__file__).resolve().parent.parent
 ENGINE = ROOT / "engine"

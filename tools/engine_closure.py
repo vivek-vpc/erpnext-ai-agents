@@ -1,5 +1,7 @@
 """The import closure (static, including imports inside functions) of the modules the Frappe app needs, among the modules of erp_agents.
-Usage: python closure.py [module ...]  -> prints the closure, and which of its members import an edge-ish third-party library"""
+Usage: python tools/engine_closure.py [module ...]  -> prints the closure, and which of its members import an edge-ish third-party library
+
+This is how the list in tools/move_to_engine.py was made (on the tree before the move: it names `erp_agents` modules, so run it on commit 3c8cfe2 or earlier to repeat it)."""
 import ast
 import sys
 from pathlib import Path
