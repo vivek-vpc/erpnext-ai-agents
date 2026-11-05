@@ -307,7 +307,7 @@ Each item of [FRAPPE_APP_PLAN.md](FRAPPE_APP_PLAN.md) sections 3 and 4 that name
 | jobs and users | "the jobs triggered by scheduler are run by **Administrator**" (background-jobs page); `frappe.enqueue(method, queue=short/default/long, timeout, is_async, now, job_name, enqueue_after_commit, at_front, **kwargs)`; defaults 300, 300 and 1500 seconds; custom queues on Frappe Cloud need a private bench group and a config key (Custom Background Workers, 2026-09-29) | yes; a job has no signed-in user, so "created under the approver" must be passed in explicitly |
 | `doc_events`, `has_permission`, `permission_query_conditions` | documented, with examples | yes |
 | `app_include_js`, workspace and page files | `app_include_js` in the template; the navigation model changed in v16 (sidebars per module, `add_to_apps_screen`: `hooks.md`) | yes, but read the v16 navigation page before the Desk package |
-| `boot_session` | the hook is **`extend_bootinfo`**; `boot_session` is only the conventional name of the function it points to | **wrong name** |
+| `boot_session` | **both names are hooks in v16.** `frappe/boot.py` line 102 still reads `hooks.boot_session`; the framework's own `hooks.py` (line 508) uses `extend_bootinfo`, which is the one the hooks page documents; ERPNext uses both (`boot_session` at line 101 of its `hooks.py`, `extend_bootinfo` at line 742). (Corrected on 5 Nov 2026: this page first called `boot_session` a wrong name, which was an error of mine, found while preparing Phase 1.) | right; use the documented `extend_bootinfo` |
 | `@frappe.whitelist`, `allow_guest=True` only for the two webhooks | Frappe's Semgrep rule `guest-whitelisted-method` flags other guest methods; `whitelisted-side-effect-on-get` flags writes in methods that accept GET | yes |
 | `patches.txt` "run once each" | yes, plus two sections `[pre_model_sync]` and `[post_model_sync]` (v14 and later), one-line `execute:` statements, and a trailing comment to run a patch again | yes |
 | Settings DocType (Single) with Password fields | "Single DocType" is documented; the `Password` field type exists ("can be used to store sensitive data like ... secret keys"); how it is stored and read back was not checked | partly: storage of Password values: Unknown |
@@ -318,7 +318,7 @@ Each item of [FRAPPE_APP_PLAN.md](FRAPPE_APP_PLAN.md) sections 3 and 4 that name
 
 Nothing was edited in this phase. These are the differences between earlier text and what was read, to be corrected in the next phase that touches those files.
 
-1. **FRAPPE_APP_PLAN.md section 3**: the hook is `extend_bootinfo`, not `boot_session`.
+1. **FRAPPE_APP_PLAN.md section 3**: nothing to correct for `boot_session`: it is still read by `frappe/boot.py`; the documented name is `extend_bootinfo` and is the better one to use (8; an earlier version of this page wrongly called `boot_session` a wrong name).
 2. **Section 3, scheduler row, and section 6, background jobs**: nothing runs finer than the tick (240 seconds by default); the "3-minute procurement pass" becomes 4 minutes or a 5-minute cron. A schedule an administrator edits can be a `Scheduled Job Type` (8).
 3. **Section 6 "Current stable Frappe and ERPNext support"**: v16 needs Python exactly 3.14.x (2.2); the plan said it "must be checked".
 4. **Section 6, Settings DocTypes and DEVELOPING.md "What the Marketplace requires"**: a settings DocType is a recommendation, not a requirement (3, row 8).
