@@ -18,7 +18,7 @@ from typing import Any, Optional
 from erp_agents.core.approvals.models import ApprovalRecord, Decision
 from erp_agents.core.approvals.service import KindHandler
 from erp_agents.core.common import iso
-from erp_agents.core.storage import dumps, loads
+from ai_munimji_engine.storage import dumps, loads
 from ..inventory.analysis import _n
 from .messages import KIND_RECEIPT, build_receipt_request
 
@@ -100,7 +100,7 @@ class ReceiptChecker:
         for receipt, ls in by_receipt.items():
             problems = [p for l in ls for p in line_problems(l, cfg.price_tolerance_pct, cfg.qty_tolerance_pct)]
             if problems:
-                row = self.app.db.query_one("SELECT status FROM receipt_checks WHERE receipt=?", (receipt,))
+                row = self.app.stock_stores.receipts.get(receipt)
                 out.append({"receipt": receipt, "vendor": ls[0].supplier_name, "posted": ls[0].posting_date.isoformat() if ls[0].posting_date else None,
                             "draft": not ls[0].submitted, "problems": [{k: p[k] for k in ("kind", "item_code", "text")} for p in problems], "before_you_pay": payment_note(ls),
                             "checked": row["status"] if row else "not yet"})
@@ -119,7 +119,7 @@ class ReceiptChecker:
             if l.submitted:
                 by_receipt[l.receipt].append(l)
         for receipt, ls in sorted(by_receipt.items()):
-            if self.app.db.query_one("SELECT 1 FROM receipt_checks WHERE receipt=?", (receipt,)):
+            if self.app.stock_stores.receipts.get(receipt):
                 continue
             report["checked"] += 1
             problems = [p for l in ls for p in line_problems(l, cfg.price_tolerance_pct, cfg.qty_tolerance_pct)]
@@ -128,14 +128,13 @@ class ReceiptChecker:
                 continue
             now = iso(self.app.clock())
             if not problems:
-                self.app.db.execute("INSERT INTO receipt_checks(receipt, supplier, status, problems_json, checked_at) VALUES (?,?,?,?,?)", (receipt, ls[0].supplier, "clean", "[]", now))
+                self.app.stock_stores.receipts.add(receipt, ls[0].supplier, "clean", "[]", None, now)
                 report["clean"] += 1
                 continue
             req = build_receipt_request(receipt, ls[0].supplier_name, ls[0].posting_date, problems, payment_note(ls))
-            with self.app.db.transaction():
+            with self.app.stores.transaction():
                 record = self.app.approvals.submit(req, deliver=False)
-                self.app.db.execute("INSERT INTO receipt_checks(receipt, supplier, status, problems_json, approval_id, checked_at) VALUES (?,?,?,?,?,?)",
-                                    (receipt, ls[0].supplier, "flagged", dumps(problems), record.id, now))
+                self.app.stock_stores.receipts.add(receipt, ls[0].supplier, "flagged", dumps(problems), record.id, now)
             self.app.approvals.deliver(record)
             report["flagged"] += 1
             report["actions"].append({"receipt": receipt, "action": "flagged", "approval_id": record.id, "problems": [p["kind"] for p in problems]})
@@ -144,9 +143,9 @@ class ReceiptChecker:
     def recorded_problems(self, since_iso: str) -> dict[str, list[dict[str, Any]]]:
         """supplier -> the problems recorded on its receipts since then (for the scorecard)."""
         out: dict[str, list[dict[str, Any]]] = defaultdict(list)
-        for r in self.app.db.query("SELECT supplier, problems_json FROM receipt_checks WHERE checked_at>=?", (since_iso,)):
+        for r in self.app.stock_stores.receipts.problems_since(since_iso):
             out[r["supplier"]] += loads(r["problems_json"]) or []
         return dict(out)
 
     def _on_decision(self, record: ApprovalRecord, decision: Decision) -> None:
-        self.app.db.execute("UPDATE receipt_checks SET status='acknowledged' WHERE approval_id=?", (record.id,))
+        self.app.stock_stores.receipts.acknowledge(record.id)

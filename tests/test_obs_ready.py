@@ -154,7 +154,7 @@ def test_ready_says_yes_to_anybody_and_gives_the_checks_to_a_signed_in_person(ap
     assert r.status_code == 200 and r.json() == {"ready": True}
     body = client.get("/ready", headers={"Authorization": f"Bearer {KEY}"}).json()
     assert body["ready"] is True and [c["name"] for c in body["checks"]] == ["database", "migrations", "scheduler"] and all(c["ok"] for c in body["checks"])
-    assert "accepts a write" in check(body, "database")["detail"] and "maintenance job last ran 0 minute" in check(body, "scheduler")["detail"]
+    assert (app.stores.kind != "sqlite" or "accepts a write" in check(body, "database")["detail"]) and "maintenance job last ran 0 minute" in check(body, "scheduler")["detail"]
 
 
 def test_ready_is_a_separate_question_from_health_and_health_does_not_change(app, clock):
@@ -164,6 +164,7 @@ def test_ready_is_a_separate_question_from_health_and_health_does_not_change(app
     assert client.get("/health").status_code == 200 and client.get("/health").json() == {"ok": True}                  # alive, though not ready
 
 
+@pytest.mark.sqlite_only
 def test_ready_says_no_when_the_database_cannot_be_written(app, clock):
     app.scheduler = FakeScheduler(clock)
     client = TestClient(create_app(app))
@@ -192,6 +193,7 @@ def test_ready_says_no_when_the_scheduler_is_not_running_or_stuck(app, clock):
     assert client.get("/ready").status_code == 200                                          # the maintenance job ran: the heartbeat is back
 
 
+@pytest.mark.sqlite_only
 def test_ready_says_no_when_the_database_is_not_the_shape_this_version_needs(app, clock, monkeypatch):
     app.scheduler = FakeScheduler(clock)
     monkeypatch.setattr(app.db, "schema_status", lambda: [("core", 2, 2), ("stock_procurement", 3, 4)])

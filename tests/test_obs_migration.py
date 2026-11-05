@@ -1,10 +1,14 @@
 """Schema version 2 adds the job_runs table (core/jobs.py). A database made by version 1 is copied aside and upgraded, a version 1 backup is still a good backup, and a
 version 2 file that lacks the table is damaged (Phase 2 of the hardening brief)."""
 import sqlite3
+
+import pytest
 from pathlib import Path
 
 from erp_agents.core import doctor, ops, storage
 from erp_agents.core.storage import Database
+
+pytestmark = pytest.mark.sqlite_only          # about the SQLite file itself: it is not run again when the suite is set to another storage
 
 
 def as_version_one(path):

@@ -5,9 +5,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional
 
+from ai_munimji_engine.storage import dumps, loads
+from ai_munimji_engine.stores.stock.alerts import AlertStore
+
 from erp_agents.core.common import Clock, iso, parse_dt, short_id, utcnow
-from erp_agents.core.storage import Database, dumps, loads
-from ..schema import ensure_schema
 
 ACTIVE = ("awaiting",)
 OPEN_STATES = ("awaiting", "snoozed", "dismissed", "actioned")
@@ -33,59 +34,42 @@ class Alert:
 
 
 class AlertRepo:
-    def __init__(self, db: Database, clock: Clock = utcnow) -> None:
-        ensure_schema(db)
-        self.db = db
+    def __init__(self, store: AlertStore, clock: Clock = utcnow) -> None:
+        self.store = store
         self.clock = clock
 
     def create(self, item_code: str, kind: str, severity: int, analysis: dict, reasoning_text: str, run_id: Optional[str]) -> Alert:
         now = iso(self.clock())
         alert_id = short_id(10)
-        self.db.execute(
-            "INSERT INTO alerts(id, item_code, kind, severity, status, created_at, updated_at, analysis_json, reasoning_text, run_id) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?)",
-            (alert_id, item_code, kind, severity, "awaiting", now, now, dumps(analysis), reasoning_text, run_id),
-        )
+        self.store.insert(alert_id, item_code, kind, severity, now, dumps(analysis), reasoning_text, run_id)
         return self.get(alert_id)
 
     def get(self, alert_id: str) -> Optional[Alert]:
-        r = self.db.query_one("SELECT * FROM alerts WHERE id=?", (alert_id,))
+        r = self.store.get(alert_id)
         return _to_alert(r) if r else None
 
     def latest_for_item(self, item_code: str) -> Optional[Alert]:
-        r = self.db.query_one("SELECT * FROM alerts WHERE item_code=? ORDER BY created_at DESC, rowid DESC LIMIT 1", (item_code,))
+        r = self.store.latest_for_item(item_code)
         return _to_alert(r) if r else None
 
     def open_for_item(self, item_code: str) -> list[Alert]:
-        marks = ",".join("?" * len(OPEN_STATES))
-        rows = self.db.query(f"SELECT * FROM alerts WHERE item_code=? AND status IN ({marks})", (item_code, *OPEN_STATES))  # only "?" placeholders are formatted in  # nosec B608
-        return [_to_alert(r) for r in rows]
+        return [_to_alert(r) for r in self.store.open_for_item(item_code, OPEN_STATES)]
 
     def list(self, status: Optional[str] = None, item_code: Optional[str] = None, limit: int = 100) -> list[Alert]:
-        sql, params, conds = "SELECT * FROM alerts", [], []
-        if status:
-            conds.append("status=?"); params.append(status)
-        if item_code:
-            conds.append("item_code=?"); params.append(item_code)
-        if conds:
-            sql += " WHERE " + " AND ".join(conds)
-        sql += " ORDER BY created_at DESC, rowid DESC LIMIT ?"
-        params.append(limit)
-        return [_to_alert(r) for r in self.db.query(sql, params)]
+        return [_to_alert(r) for r in self.store.list(status, item_code, limit)]
 
     def set_approval(self, alert_id: str, approval_id: str) -> None:
-        self.db.execute("UPDATE alerts SET approval_id=?, updated_at=? WHERE id=?", (approval_id, iso(self.clock()), alert_id))
+        self.store.set_approval(alert_id, approval_id, iso(self.clock()))
+
+    def set_reasoning(self, alert_id: str, text: str) -> None:
+        self.store.set_reasoning(alert_id, text)
 
     def update_status(self, alert_id: str, status: str, note: str = "", *, snoozed_until: Optional[datetime] = None,
                       suppress_until: Optional[datetime] = None, cooldown_until: Optional[datetime] = None) -> None:
-        self.db.execute(
-            "UPDATE alerts SET status=?, status_note=?, updated_at=?, snoozed_until=COALESCE(?, snoozed_until), "
-            "suppress_until=COALESCE(?, suppress_until), cooldown_until=COALESCE(?, cooldown_until) WHERE id=?",
-            (status, note, iso(self.clock()), iso(snoozed_until), iso(suppress_until), iso(cooldown_until), alert_id),
-        )
+        self.store.update_status(alert_id, status, note, iso(self.clock()), iso(snoozed_until), iso(suppress_until), iso(cooldown_until))
 
     def by_approval(self, approval_id: str) -> Optional[Alert]:
-        r = self.db.query_one("SELECT * FROM alerts WHERE approval_id=?", (approval_id,))
+        r = self.store.by_approval(approval_id)
         return _to_alert(r) if r else None
 
 

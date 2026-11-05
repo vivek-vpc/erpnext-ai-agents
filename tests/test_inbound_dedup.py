@@ -89,7 +89,7 @@ def test_a_whatsapp_message_delivered_twice_is_answered_once(wired):
     assert wa_post(client, wa_text("wamid.A1")).status_code == 200
     assert len(sent_to_phone(http)) == 1
     assert wa_post(client, wa_text("wamid.A1")).status_code == 200                       # the same message again: WhatsApp did not get our 200 in time
-    assert len(sent_to_phone(http)) == 1 and app.db.query_one("SELECT COUNT(*) AS n FROM chat_log")["n"] == 1
+    assert len(sent_to_phone(http)) == 1 and len(app.stock_stores.assistant.chats(10)) == 1
 
 
 def test_two_different_messages_with_the_same_words_are_two_questions(wired):
@@ -203,8 +203,8 @@ def test_ids_are_forgotten_after_the_set_number_of_days_by_the_housekeeping_job(
     wa_post(client, wa_text("wamid.NEW", "How much NUT-1 do we have?"))
     clock.advance(days=2)                                                                   # the first is now 8 days old, the second 2
     AgentScheduler(app)._maintenance_job()
-    rows = {r["external_id"] for r in app.db.query("SELECT external_id FROM inbound_seen")}
-    assert rows == {"wamid.NEW"}
+    assert app.approvals.inbound.claim("whatsapp", "wamid.OLD") is True           # forgotten: it can be claimed again
+    assert app.approvals.inbound.claim("whatsapp", "wamid.NEW") is False          # still remembered
 
 
 def test_the_number_of_days_comes_from_the_settings(make_app, clock):
@@ -254,6 +254,7 @@ def tables_of(path):
         c.close()
 
 
+@pytest.mark.sqlite_only
 @pytest.mark.parametrize("old", [1, 2])
 def test_an_older_database_is_copied_aside_and_gets_the_new_table(tmp_path, old):
     from erp_agents.core import storage
@@ -272,6 +273,7 @@ def test_an_older_database_is_copied_aside_and_gets_the_new_table(tmp_path, old)
     db.close()
 
 
+@pytest.mark.sqlite_only
 def test_a_backup_made_by_the_previous_version_still_verifies_and_restores(tmp_path):
     from erp_agents.core import ops
     path = str(tmp_path / "app.db")

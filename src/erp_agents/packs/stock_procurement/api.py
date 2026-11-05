@@ -238,7 +238,7 @@ def routes(router: Any, ctx: Any, deps: Any) -> None:
 
     @router.get("/api/v1/inventory/runs")
     def runs(limit: int = Query(20, ge=1, le=MAX_LIST_LIMIT), _: Actor = Depends(require("viewer"))) -> list[dict]:
-        rows = ctx.db.query("SELECT * FROM agent_runs ORDER BY started_at DESC LIMIT ?", (limit,))
+        rows = ctx.stock_stores.runs.list(limit)
         return [{"id": r["id"], "started_at": r["started_at"], "dry_run": bool(r["dry_run"]), "summary": json.loads(r["summary_json"] or "{}")} for r in rows]
 
     @router.post("/api/v1/procurement/run")

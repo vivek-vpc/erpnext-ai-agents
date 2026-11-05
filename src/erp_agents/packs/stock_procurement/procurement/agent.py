@@ -15,7 +15,7 @@ import logging
 import math
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timedelta
-from typing import Any, Callable, Optional
+from typing import Any, Callable, ContextManager, Optional
 from zoneinfo import ZoneInfo
 
 from erp_agents.core.approvals.models import ApprovalRecord, Decision, DecisionRefused, DecisionResult
@@ -23,7 +23,8 @@ from erp_agents.core.approvals.service import ApprovalService, KindHandler, pars
 from erp_agents.core import acting
 from erp_agents.core.common import Actor, Clock, iso, short_id, utcnow
 from erp_agents.core.settings_store import SettingsStore
-from erp_agents.core.storage import Database, dumps
+from ai_munimji_engine.storage import dumps
+from ai_munimji_engine.stores.stock.runs import AgentRunStore
 from erp_agents.core.workorders import REORDER_NEEDED, WorkOrderQueue
 from erp_agents.core.erp.base import ERPClient, PurchaseOrderDraft, PurchaseOrderResult, QuoteRule, RequisitionDraft, TaxSetup
 from .messages import (
@@ -32,7 +33,6 @@ from .messages import (
 from .proposals import Proposal, ProposalRepo
 from ..inventory.analysis import _n
 from .scoring import Need, Ranking, ScoredVendor, rank_vendors
-from ..schema import ensure_schema
 
 log = logging.getLogger(__name__)
 AGENT_NAME = "procurement"
@@ -73,10 +73,9 @@ class _Need:
 
 class ProcurementAgent:
     def __init__(self, erp: ERPClient, settings: SettingsStore, proposals: ProposalRepo, approvals: ApprovalService,
-                 workorders: WorkOrderQueue, db: Database, clock: Clock = utcnow) -> None:
+                 workorders: WorkOrderQueue, runs: AgentRunStore, transaction: Callable[[], ContextManager[Any]], clock: Clock = utcnow) -> None:
         self.erp, self.settings, self.proposals = erp, settings, proposals
-        ensure_schema(db)
-        self.approvals, self.workorders, self.db, self.clock = approvals, workorders, db, clock
+        self.approvals, self.workorders, self.runs, self.transaction, self.clock = approvals, workorders, runs, transaction, clock
         handler = KindHandler(on_decision=self._on_decision, on_expired=self._on_expired, on_cancelled=self._on_cancelled, on_action=self._on_action,
                               outcome_detail=self._outcome_detail, reconcile=self._reconcile)
         approvals.register_handler(KIND_PO, handler)
@@ -133,10 +132,7 @@ class ProcurementAgent:
                 report.skipped += 1
 
         report.finished_at = iso(self.clock())
-        self.db.execute(
-            "INSERT INTO agent_runs(id, agent, started_at, finished_at, dry_run, summary_json) VALUES (?,?,?,?,?,?)",
-            (run_id, AGENT_NAME, report.started_at, report.finished_at, int(dry_run), dumps(report.to_dict())),
-        )
+        self.runs.add(run_id, AGENT_NAME, report.started_at, report.finished_at, dry_run, dumps(report.to_dict()))
         return report
 
     # ================================================================== one work order
@@ -181,7 +177,7 @@ class ProcurementAgent:
             return {**base, "action": "would_propose", **summary, "ranking": ranking.to_dict()}
 
         today = self.today()
-        with self.db.transaction():
+        with self.transaction():
             self.workorders.set_status(wo["id"], "claimed")
             prop = self.proposals.create(wo["id"], code, "awaiting", supplier=best.supplier, supplier_name=best.name, qty=need.qty,
                                          rate=best.unit_price, total=best.total, ranking=ranking.to_dict())
@@ -211,7 +207,7 @@ class ProcurementAgent:
         if dry_run:
             return {**base, "action": "would_ask_manual", "problem": problem}
         cfg = self.settings.procurement()
-        with self.db.transaction():
+        with self.transaction():
             self.workorders.set_status(wo["id"], "claimed")
             prop = self.proposals.create(wo["id"], base["item_code"], "manual", ranking=ranking.to_dict() if ranking else None, note=problem)
             record = self.approvals.submit(build_manual_request(prop.id, wo["payload"], problem, ranking, cfg), deliver=False)
@@ -344,7 +340,7 @@ class ProcurementAgent:
         note = vendor_note_for(wo, best, need, cfg, today, prop.id)
         route = (prop.ranking or {}).get("route") or route_for(cfg, prop.item_code, wo.get("item_group"))
         req = build_po_request(prop.id, wo, ranking, best, need, cfg, today, vendor_note=note, route=route, revision=text, moq=moq, replaces=replaces)
-        with self.db.transaction():
+        with self.transaction():
             new = self.approvals.supersede(record.id, req, "replaced by a revised request")
             if new is None:
                 return None

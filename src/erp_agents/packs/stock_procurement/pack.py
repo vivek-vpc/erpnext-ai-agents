@@ -28,8 +28,8 @@ from .inventory.agent import InventoryAgent
 from .inventory.alerts import AlertRepo
 from .procurement.agent import ProcurementAgent
 from .procurement.proposals import ProposalRepo
-from .schema import ensure_schema
 from .settings import attach as attach_settings
+from .stores import stock_stores_for
 from .tools import StockTools
 
 log = logging.getLogger(__name__)
@@ -48,15 +48,16 @@ class StockProcurementPack(Pack):
     def setup(self, app: Any) -> None:
         cfg = app.config
         attach_settings(app.settings, cfg.get("policy"), cfg.get("procurement"), cfg.get("calendar"), cfg.get("followup"))
-        ensure_schema(app.db)
-        alerts = AlertRepo(app.db, app.clock)
-        inventory = InventoryAgent(app.erp, app.settings, alerts, app.approvals, app.workorders, app.db, app.clock)
-        proposals = ProposalRepo(app.db, app.clock)
-        procurement = ProcurementAgent(app.erp, app.settings, proposals, app.approvals, app.workorders, app.db, app.clock)
+        stock = stock_stores_for(app.stores)                                # the pack's tables, on the same storage as the core's (SQLite: made here if they are not there)
+        app.services["stock_stores"] = stock
+        alerts = AlertRepo(stock.alerts, app.clock)
+        inventory = InventoryAgent(app.erp, app.settings, alerts, app.approvals, app.workorders, stock, app.stores.transaction, app.clock)
+        proposals = ProposalRepo(stock.proposals, app.clock)
+        procurement = ProcurementAgent(app.erp, app.settings, proposals, app.approvals, app.workorders, stock.runs, app.stores.transaction, app.clock)
         inventory.order_settled = procurement.order_settled                 # a quiet period ends when its order is done
         procurement.on_order_removed = inventory.end_quiet_period           # and when the order is cancelled
-        assistant = AssistantService(app.db, app.settings, app.approvals, alerts, proposals, app.clock)
-        chat = ChatService(app.erp, inventory, procurement, proposals, app.approvals, app.settings, app.db, app.clock, limits=app.limits)
+        assistant = AssistantService(stock.assistant, app.settings, app.approvals, alerts, proposals, app.clock)
+        chat = ChatService(app.erp, inventory, procurement, proposals, app.approvals, app.settings, stock.assistant, app.clock, limits=app.limits)
         app.services.update(alerts=alerts, inventory=inventory, proposals=proposals, procurement=procurement, assistant=assistant, chat=chat)
         app.services.update(followup=FollowUp(app), stock_insight=StockInsight(app), transfers=StockTransfers(app))
         self._history_context(app)
@@ -130,11 +131,11 @@ class StockProcurementPack(Pack):
             if move is not None:
                 out.append({"heading": "Stock transfer", "lines": [f"{move['qty']:g} {move['uom']} of {move['item_code']} from {move['from_warehouse']} to {move['to_warehouse']}; status {move['status']}"
                                                                    + (f", draft {move['entry_name']}" if move["entry_name"] else "") + (f" ({move['status_note']})" if move["status_note"] else "") + "."]})
-            sent = app.db.query("SELECT supplier, channel, status, error, sent_at FROM vendor_messages WHERE approval_id=? ORDER BY sent_at", (rec.id,))
+            sent = app.stock_stores.vendors.messages_for_approval(rec.id)
             if sent:
                 out.append({"heading": "Messages to vendors", "lines": [f"{r['sent_at'][:16].replace('T', ' ')}: to {r['supplier']} by {r['channel']}, {r['status']}"
                                                                         + (f" ({r['error']})" if r["error"] else "") for r in sent]})
-            replies = app.db.query("SELECT r.supplier, r.text, r.received_at FROM vendor_replies r JOIN vendor_messages m ON m.id = r.message_id WHERE m.approval_id=? ORDER BY r.id", (rec.id,))
+            replies = app.stock_stores.vendors.replies_for_approval(rec.id)
             if replies:
                 out.append({"heading": "Vendor replies (their words)", "lines": [f"{r['received_at'][:16].replace('T', ' ')} {r['supplier']}: \"{r['text']}\"" for r in replies]})
             return out

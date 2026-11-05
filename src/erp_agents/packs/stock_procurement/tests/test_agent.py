@@ -4,6 +4,7 @@ import pytest
 from erp_agents.core.erp.mock import MockERP
 
 from conftest import OWNER
+from conftest import tamper
 
 
 def by_item(report):
@@ -167,8 +168,7 @@ def test_disabled_group_is_skipped(demo):
 
 def test_bad_policy_for_one_item_does_not_stop_the_run(demo):
     # Bypass validation to simulate a corrupted row; the run must report it and carry on.
-    demo.db.execute("INSERT INTO settings_overrides(scope_type, scope_key, data_json, updated_by, updated_at) VALUES "
-                    "('item','BOLT-M8','{\"min_qty\": -1}','x','2026-01-01T00:00:00+00:00')")
+    demo.stores.settings.save("item", "BOLT-M8", '{"min_qty": -1}', "x", "2026-01-01T00:00:00+00:00", [])
     r = demo.inventory.run(dry_run=True)
     assert any("BOLT-M8" in e for e in r.errors) and "OIL-5L" in by_item(r)
 
@@ -189,7 +189,7 @@ def test_item_filter(demo):
 
 def test_run_is_logged(demo):
     r = demo.inventory.run()
-    row = demo.db.query_one("SELECT * FROM agent_runs WHERE id=?", (r.run_id,))
+    row = demo.stock_stores.runs.get(r.run_id)
     assert row["agent"] == "inventory" and row["dry_run"] == 0
 
 
@@ -325,6 +325,6 @@ def test_a_dry_run_says_it_would_end_the_quiet_period_and_changes_nothing(demo, 
 def test_an_order_from_an_earlier_reorder_does_not_end_a_later_quiet_period(demo, clock, monkeypatch):
     """The completed order must come from the reorder that started this quiet period, not from one months ago."""
     po = ordered(demo)
-    demo.db.execute("UPDATE proposals SET created_at=? WHERE id=?", ("2026-01-01T00:00:00+00:00", po.id))
+    tamper(demo, "proposals", {"id": po.id}, lambda r: {"created_at": "2026-01-01T00:00:00+00:00"})
     monkeypatch.setattr(demo.erp, "get_documents", lambda *a, **k: [po_doc(po)])
     assert by_item(demo.inventory.run())["BOLT-M8"]["action"] == "skipped:ordered_recently"

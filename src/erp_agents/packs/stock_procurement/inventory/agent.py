@@ -13,8 +13,11 @@ import json
 import logging
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timedelta
-from typing import Any, Callable, Optional
+from typing import Any, Callable, ContextManager, Optional
 from zoneinfo import ZoneInfo
+
+from ai_munimji_engine.storage import dumps
+from ai_munimji_engine.stores.stock import StockStores
 
 from erp_agents.core.approvals.models import ApprovalRecord, Decision
 from erp_agents.core.approvals.render import render_plain
@@ -22,7 +25,6 @@ from erp_agents.core.approvals.service import ApprovalService, KindHandler
 from erp_agents.core.common import Clock, iso, short_id, utcnow
 from ..settings import Policy
 from erp_agents.core.settings_store import SettingsError, SettingsStore
-from erp_agents.core.storage import Database, dumps
 from erp_agents.core.workorders import REORDER_NEEDED, WorkOrderQueue
 from erp_agents.core.erp.base import ERPClient, ItemInfo
 from .alerts import Alert, AlertRepo
@@ -30,7 +32,6 @@ from .events import Window, active_windows
 from .analysis import SEV_CRITICAL, SEV_NAMES, STATUS_BREACH, STATUS_EARLY, STATUS_OK, Analysis, _n, analyze_item
 from .messages import KIND, KIND_ALERT, KIND_MONITOR_DOWN, alert_level, build_alert_request, build_monitor_down_request, build_request
 from .notices import LEVELS, NoticeRepo
-from ..schema import ensure_schema
 
 log = logging.getLogger(__name__)
 AGENT_NAME = "inventory"
@@ -73,13 +74,13 @@ class InventoryAgent:
         alerts: AlertRepo,
         approvals: ApprovalService,
         workorders: WorkOrderQueue,
-        db: Database,
+        stock: StockStores,
+        transaction: Callable[[], ContextManager[Any]],
         clock: Clock = utcnow,
     ) -> None:
         self.erp, self.settings, self.alerts = erp, settings, alerts
-        ensure_schema(db)
-        self.approvals, self.workorders, self.db, self.clock = approvals, workorders, db, clock
-        self.notices = NoticeRepo(db, clock)
+        self.approvals, self.workorders, self.runs, self.transaction, self.clock = approvals, workorders, stock.runs, transaction, clock
+        self.notices = NoticeRepo(stock.notices, clock)
         self.order_settled: Optional[Callable[[str, datetime], bool]] = None        # (item, since) -> its order was made and none of it is still on the way; set by bootstrap
         self.extra_sections: list[Callable[[Analysis], list[Any]]] = []             # more sections for an alert or a reorder request (approved alternatives when short)
         approvals.register_handler(KIND, KindHandler(
@@ -187,10 +188,7 @@ class InventoryAgent:
             report.actions.append(action)
 
         report.finished_at = iso(self.clock())
-        self.db.execute(
-            "INSERT INTO agent_runs(id, agent, started_at, finished_at, dry_run, summary_json) VALUES (?,?,?,?,?,?)",
-            (run_id, AGENT_NAME, report.started_at, report.finished_at, int(dry_run), dumps(report.to_dict())),
-        )
+        self.runs.add(run_id, AGENT_NAME, report.started_at, report.finished_at, dry_run, dumps(report.to_dict()))
         if not dry_run and not item_codes:
             self._monitor_recovered()
         return report
@@ -203,17 +201,13 @@ class InventoryAgent:
         report.failed = True
         report.errors.append(f"ERP could not be read: {message}")
         report.finished_at = iso(self.clock())
-        self.db.execute(
-            "INSERT INTO agent_runs(id, agent, started_at, finished_at, dry_run, summary_json) VALUES (?,?,?,?,?,?)",
-            (report.run_id, AGENT_NAME, report.started_at, report.finished_at, int(dry_run), dumps(report.to_dict())),
-        )
+        self.runs.add(report.run_id, AGENT_NAME, report.started_at, report.finished_at, dry_run, dumps(report.to_dict()))
         if not dry_run:
             self._warn_monitor_down()
         return report
 
     def _recent_real_runs(self, limit: int) -> list[dict[str, Any]]:
-        rows = self.db.query("SELECT started_at, summary_json FROM agent_runs WHERE agent=? AND dry_run=0 ORDER BY started_at DESC LIMIT ?", (AGENT_NAME, limit))
-        return [{"started_at": r["started_at"], **json.loads(r["summary_json"] or "{}")} for r in rows]
+        return [{"started_at": r["started_at"], **json.loads(r["summary_json"] or "{}")} for r in self.runs.recent(AGENT_NAME, limit)]
 
     def _warn_monitor_down(self) -> None:
         """After N failed runs in a row, send ONE 'the monitor is down' notice (not again while it is open or within a day of the last one)."""
@@ -221,10 +215,10 @@ class InventoryAgent:
         recent = self._recent_real_runs(n)
         if len(recent) < n or not all(r.get("failed") for r in recent):
             return
-        existing = self.db.query("SELECT created_at, status FROM approvals WHERE kind=? ORDER BY created_at DESC LIMIT 1", (KIND_MONITOR_DOWN,))
+        existing = self.approvals.latest_of_kind(KIND_MONITOR_DOWN)
         if existing:
-            last = datetime.fromisoformat(existing[0]["created_at"].replace("Z", "+00:00"))
-            if existing[0]["status"] == "pending" or self.clock() - last < timedelta(hours=24):
+            last = datetime.fromisoformat(existing["created_at"].replace("Z", "+00:00"))
+            if existing["status"] == "pending" or self.clock() - last < timedelta(hours=24):
                 return
         errors = [f"{r['started_at'][:16].replace('T', ' ')} UTC: {(r.get('errors') or ['?'])[0]}" for r in recent]
         req = build_monitor_down_request(n, recent[-1]["started_at"][:16].replace("T", " ") + " UTC", (recent[0].get("errors") or ["unknown error"])[0], errors)
@@ -392,10 +386,10 @@ class InventoryAgent:
         # Replace anything still open for this item, then create the new alert + approval atomically.
         for old in self.alerts.open_for_item(a.item_code):
             self._close(old, "superseded", f"replaced by a newer {SEV_NAMES[a.severity]} alert")
-        with self.db.transaction():
+        with self.transaction():
             alert = self.alerts.create(a.item_code, a.kind, a.severity, a.to_dict(), "", run_id)
             req = self._with_extras(build_request(a, alert.id, sources), a)
-            self.db.execute("UPDATE alerts SET reasoning_text=? WHERE id=?", (render_plain(req), alert.id))
+            self.alerts.set_reasoning(alert.id, render_plain(req))
             record = self.approvals.submit(req, deliver=False)
             self.alerts.set_approval(alert.id, record.id)
         self.approvals.deliver(record)          # network I/O after the database commit
@@ -424,7 +418,7 @@ class InventoryAgent:
             self.notices.set_status(old.id, "superseded")
             if old.approval_id:
                 self.approvals.cancel(old.approval_id, f"replaced by a newer {level.lower()} stock alert")
-        with self.db.transaction():
+        with self.transaction():
             notice = self.notices.create(a.item_code, level, None)
             req = self._with_extras(build_alert_request(a, notice.id, level, request_follows, int(a.policy.get("snooze_days", 3))), a)
             record = self.approvals.submit(req, deliver=False)

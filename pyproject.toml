@@ -54,4 +54,5 @@ erp_agents = ["settings.example.yaml", "packs/stock_procurement/web/*", "packs/*
 # core and cross-cutting tests live in tests/; each pack keeps its own next to its code. conftest.py (the shared fixtures) is at the repository root, and every test folder is on the
 # path so a test can borrow a helper from a test in another folder.
 testpaths = ["tests", "src/erp_agents/packs"]
+markers = ["sqlite_only: about SQLite itself (the schema, its migrations, a backup, the doctor): not run again when the suite is set to another storage"]
 pythonpath = ["src", "engine/src", ".", "tests", "src/erp_agents/packs/stock_procurement/tests"]

@@ -204,9 +204,7 @@ def test_ask_why_can_explain_the_duties(world):
 
 def test_settings_the_owner_used_to_write_are_gone_and_old_saves_cannot_break_loading(world):
     app, _ = world
-    app.db.execute("INSERT INTO settings_overrides(scope_type, scope_key, data_json, updated_by, updated_at) VALUES ('procurement','*',?,?,?) "
-                   "ON CONFLICT(scope_type, scope_key) DO UPDATE SET data_json=excluded.data_json",
-                   (json.dumps({"tax_rules": [{"name": "old"}], "home_country": "India", "weight_cost": 77}), "owner", "2026-10-01T00:00:00+00:00"))
+    app.stores.settings.save("procurement", "*", json.dumps({"tax_rules": [{"name": "old"}], "home_country": "India", "weight_cost": 77}), "owner", "2026-10-01T00:00:00+00:00", [])
     s = app.settings.procurement()
     assert s.weight_cost == 77 and not hasattr(s, "tax_rules") and not hasattr(s, "home_country")
     with pytest.raises(Exception, match="Unknown procurement field"):

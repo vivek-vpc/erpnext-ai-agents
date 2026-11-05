@@ -28,14 +28,14 @@ from erp_agents.core.common import Clock, iso, untrusted, utcnow
 from erp_agents.core.policy import AssistantSettings
 from erp_agents.core.resilience import Limits, RateLimited, ResilienceSettings
 from erp_agents.core.settings_store import SettingsStore
-from erp_agents.core.storage import Database, dumps, loads
+from ai_munimji_engine.storage import dumps, loads
+from ai_munimji_engine.stores.stock.assistant import AssistantStore
 from erp_agents.core.erp.base import ERPClient, ItemInfo
 from ..inventory.analysis import _d, _n, where_stock_is
 from erp_agents.core.assistant.facts import Fact
 from erp_agents.core.assistant.llm import LLMClient, LLMError, OllamaClient
 from erp_agents.core.assistant.verify import NOT_ENOUGH, verify
 from erp_agents.core.prompting import DATA_RULE, data, fact_line
-from ..schema import ensure_schema
 
 log = logging.getLogger(__name__)
 
@@ -417,12 +417,11 @@ def status_label(a: Any) -> tuple[str, str]:
 
 
 class ChatService:
-    def __init__(self, erp: ERPClient, inventory: Any, procurement: Any, proposals: Any, approvals: Any, settings: SettingsStore, db: Database,
+    def __init__(self, erp: ERPClient, inventory: Any, procurement: Any, proposals: Any, approvals: Any, settings: SettingsStore, store: AssistantStore,
                  clock: Clock = utcnow, client_factory: Optional[Callable[[AssistantSettings], LLMClient]] = None,
                  limits: Optional[Limits] = None) -> None:
         self.erp, self.inventory, self.procurement, self.proposals, self.approvals = erp, inventory, procurement, proposals, approvals
-        ensure_schema(db)
-        self.settings, self.db, self.clock = settings, db, clock
+        self.settings, self.store, self.clock = settings, store, clock
         self.client_factory = client_factory or (lambda cfg: OllamaClient(cfg.base_url, cfg.model, cfg.timeout_seconds))
         self.limits = limits or Limits(ResilienceSettings())          # the application's per-person limits (one set, shared with the chat on phones and the API)
         self.agent_fallback: Optional[Callable[[str, str, bool], Optional[dict[str, Any]]]] = None      # (question, user, can_decide) -> an agent's answer, or None (set by bootstrap)
@@ -479,7 +478,7 @@ class ChatService:
 
     def _log(self, user: str, question: str, intent: str, status: str, source: str) -> None:
         try:
-            self.db.execute("INSERT INTO chat_log(asked_by, asked_at, question, intent, status, source) VALUES (?,?,?,?,?,?)", (user, iso(self.clock()), question[:300], intent, status, source))
+            self.store.log_chat(user, iso(self.clock()), question[:300], intent, status, source)
         except Exception:  # noqa: BLE001 - the log must never break an answer
             log.exception("could not write the chat log")
 
@@ -550,9 +549,9 @@ class ChatService:
         if not ans.facts:
             return {"status": "not_enough_information", "answer": NOT_ENOUGH, "facts": []}
         key = hashlib.sha256(json.dumps([PROMPT_VERSION, cfg.model, [f.text for f in ans.facts], question.lower()]).encode()).hexdigest()
-        row = self.db.query_one("SELECT result_json FROM assistant_answers WHERE cache_key=?", (key,))
-        if row:
-            res = loads(row["result_json"])
+        cached = self.store.cached_answer(key)
+        if cached is not None:
+            res = loads(cached)
             res.pop("draft", None)
             return {**res, "cached": True}
         user_msg = "FACTS:\n" + "\n".join(fact_line(f.id, f.text) for f in ans.facts) + f"\n\nQUESTION: {data(question, MAX_CHAT_QUESTION)}"
@@ -564,8 +563,7 @@ class ChatService:
         verdict = verify(raw, ans.facts, question, cfg.max_answer_chars)
         res = {"status": verdict.status, "answer": verdict.answer if verdict.status == "answered" else NOT_ENOUGH,
                "facts": [{"id": f.id, "text": f.text} for f in verdict.cited], "check": verdict.check, "model": cfg.model, "seconds": round(time.monotonic() - started, 1)}
-        self.db.execute("INSERT OR REPLACE INTO assistant_answers(cache_key, approval_id, question, result_json, model, asked_by, created_at) VALUES (?,?,?,?,?,?,?)",
-                        (key, "chat", question, dumps({**res, "draft": raw[:4000]}), cfg.model, user, iso(self.clock())))
+        self.store.put_answer(key, "chat", question, dumps({**res, "draft": raw[:4000]}), cfg.model, user, iso(self.clock()))
         return {**res, "cached": False}
 
     def _route_with_ai(self, question: str) -> Optional[str]:

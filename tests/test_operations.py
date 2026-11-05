@@ -18,6 +18,8 @@ from erp_agents.core.cli import main
 from erp_agents.core import doctor, ops
 from erp_agents.core.storage import Database, SchemaError
 
+pytestmark = pytest.mark.sqlite_only          # about the SQLite file itself: it is not run again when the suite is set to another storage
+
 PY = sys.executable
 WINDOWS = sys.platform == "win32"
 
@@ -537,18 +539,20 @@ def rows_of(path, table):
         c.close()
 
 
+@pytest.mark.sqlite_only
 def test_the_stock_packs_tables_are_made_by_the_pack_not_the_core(tmp_path):
-    from erp_agents.packs.stock_procurement.inventory.alerts import AlertRepo
+    from erp_agents.packs.stock_procurement.stores import sqlite_stock_stores
     from erp_agents.packs.stock_procurement import schema as stock
     db = Database(str(tmp_path / "stock.db"))
     tables = lambda: {r["name"] for r in db.query("SELECT name FROM sqlite_master WHERE type='table'")}      # noqa: E731
     assert not ({"alerts", "proposals", "stock_notices", "chat_log", "assistant_answers", "agent_runs"} & tables())      # a bare core database has none of them
-    AlertRepo(db)                                                                                         # the pack's repository registers its schema when it is built
+    sqlite_stock_stores(db)                                                                               # the pack's stores register its schema when they are built
     assert {"alerts", "proposals", "stock_notices", "chat_log", "assistant_answers", "agent_runs"} <= tables()
     assert db.query_one("SELECT version FROM pack_schema WHERE pack=?", (stock.NAME,))["version"] == stock.VERSION
     db.close()
 
 
+@pytest.mark.sqlite_only
 def test_a_database_with_the_old_combined_schema_opens_and_keeps_every_row(tmp_path):
     """Before packs, one SCHEMA made every table. A file made then has the stock tables, data in them, and no pack_schema table."""
     from erp_agents.packs.stock_procurement import schema as stock
@@ -562,7 +566,8 @@ def test_a_database_with_the_old_combined_schema_opens_and_keeps_every_row(tmp_p
     c.commit()
     c.close()
     from erp_agents.packs.stock_procurement.inventory.alerts import AlertRepo
+    from erp_agents.packs.stock_procurement.stores import sqlite_stock_stores
     db = Database(path)
-    repo = AlertRepo(db)
+    repo = AlertRepo(sqlite_stock_stores(db).alerts)
     assert repo.latest_for_item("BOLT-M8").id == "a1"
     db.close()

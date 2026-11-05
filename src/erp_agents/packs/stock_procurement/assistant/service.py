@@ -17,14 +17,14 @@ from erp_agents.core.approvals.service import ApprovalService
 from erp_agents.core.common import Actor, Clock, iso, utcnow
 from erp_agents.core.policy import AssistantSettings
 from erp_agents.core.settings_store import SettingsStore
-from erp_agents.core.storage import Database, dumps, loads
+from ai_munimji_engine.storage import dumps, loads
+from ai_munimji_engine.stores.stock.assistant import AssistantStore
 from ..inventory.alerts import AlertRepo
 from ..procurement.proposals import ProposalRepo
 from erp_agents.core.assistant.facts import Fact, build_facts
 from erp_agents.core.assistant.llm import LLMClient, LLMError, OllamaClient
 from erp_agents.core.assistant.verify import NOT_ENOUGH, verify
 from erp_agents.core.prompting import DATA_RULE, clean, data, fact_line
-from ..schema import ensure_schema
 
 log = logging.getLogger(__name__)
 
@@ -53,11 +53,10 @@ REPLY_SCHEMA: dict[str, Any] = {
 
 
 class AssistantService:
-    def __init__(self, db: Database, settings: SettingsStore, approvals: ApprovalService, alerts: AlertRepo,
+    def __init__(self, store: AssistantStore, settings: SettingsStore, approvals: ApprovalService, alerts: AlertRepo,
                  proposals: ProposalRepo, clock: Clock = utcnow,
                  client_factory: Optional[Callable[[AssistantSettings], LLMClient]] = None) -> None:
-        ensure_schema(db)
-        self.db, self.settings, self.approvals, self.alerts, self.proposals, self.clock = db, settings, approvals, alerts, proposals, clock
+        self.store, self.settings, self.approvals, self.alerts, self.proposals, self.clock = store, settings, approvals, alerts, proposals, clock
         self.client_factory = client_factory or (lambda cfg: OllamaClient(cfg.base_url, cfg.model, cfg.timeout_seconds))
 
     # ---------------------------------------------------------------- status
@@ -96,9 +95,9 @@ class AssistantService:
 
         facts = self.facts_for(approval_id)
         key = hashlib.sha256(json.dumps([PROMPT_VERSION, cfg.model, [f.text for f in facts], question.lower()]).encode()).hexdigest()
-        row = self.db.query_one("SELECT result_json FROM assistant_answers WHERE cache_key=?", (key,))
-        if row:
-            result = loads(row["result_json"])
+        cached = self.store.cached_answer(key)
+        if cached is not None:
+            result = loads(cached)
             result.pop("draft", None)
             return {**result, "cached": True}
 
@@ -120,16 +119,12 @@ class AssistantService:
             "seconds": round(time.monotonic() - started, 1),
         }
         # The draft is kept for auditing a rejected answer; it is never shown as an answer.
-        self.db.execute(
-            "INSERT OR REPLACE INTO assistant_answers(cache_key, approval_id, question, result_json, model, asked_by, created_at) VALUES (?,?,?,?,?,?,?)",
-            (key, approval_id, question, dumps({**result, "draft": raw[:4000]}), cfg.model, actor.id, iso(self.clock())),
-        )
+        self.store.put_answer(key, approval_id, question, dumps({**result, "draft": raw[:4000]}), cfg.model, actor.id, iso(self.clock()))
         return {**result, "cached": False}
 
     def history(self, approval_id: str) -> list[dict[str, Any]]:
-        rows = self.db.query("SELECT question, result_json, asked_by, created_at FROM assistant_answers WHERE approval_id=? ORDER BY created_at", (approval_id,))
         out = []
-        for r in rows:
+        for r in self.store.answers_for(approval_id):
             res = loads(r["result_json"])
             res.pop("draft", None)
             out.append({"question": r["question"], "asked_by": r["asked_by"], "asked_at": r["created_at"], **res})

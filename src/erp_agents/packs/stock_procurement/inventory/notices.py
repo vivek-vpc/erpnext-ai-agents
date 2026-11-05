@@ -10,9 +10,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
+from ai_munimji_engine.stores.stock.notices import NoticeStore
+
 from erp_agents.core.common import Clock, iso, parse_dt, short_id, utcnow
-from erp_agents.core.storage import Database
-from ..schema import ensure_schema
 
 LEVELS = {"LOW": 0, "URGENT": 1}
 ACTIVE = ("sent", "acknowledged", "snoozed")
@@ -30,42 +30,37 @@ class Notice:
 
 
 class NoticeRepo:
-    def __init__(self, db: Database, clock: Clock = utcnow) -> None:
-        ensure_schema(db)
-        self.db, self.clock = db, clock
+    def __init__(self, store: NoticeStore, clock: Clock = utcnow) -> None:
+        self.store, self.clock = store, clock
 
     def create(self, item_code: str, level: str, approval_id: Optional[str] = None) -> Notice:
         now, nid = iso(self.clock()), short_id(10)
-        self.db.execute("INSERT INTO stock_notices(id, item_code, level, status, created_at, updated_at, approval_id) VALUES (?,?,?,?,?,?,?)",
-                        (nid, item_code, level, "sent", now, now, approval_id))
+        self.store.insert(nid, item_code, level, now, approval_id)
         return self.get(nid)                                                       # type: ignore[return-value]
 
     def get(self, nid: str) -> Optional[Notice]:
-        r = self.db.query_one("SELECT * FROM stock_notices WHERE id=?", (nid,))
+        r = self.store.get(nid)
         return _row(r) if r else None
 
     def by_approval(self, approval_id: str) -> Optional[Notice]:
-        r = self.db.query_one("SELECT * FROM stock_notices WHERE approval_id=?", (approval_id,))
+        r = self.store.by_approval(approval_id)
         return _row(r) if r else None
 
     def latest_active(self, item_code: str) -> Optional[Notice]:
-        marks = ",".join("?" * len(ACTIVE))
-        r = self.db.query_one(f"SELECT * FROM stock_notices WHERE item_code=? AND status IN ({marks}) ORDER BY created_at DESC, rowid DESC LIMIT 1", (item_code, *ACTIVE))  # only "?" placeholders are formatted in  # nosec B608
+        r = self.store.latest_active(item_code, ACTIVE)
         return _row(r) if r else None
 
     def active_for_item(self, item_code: str) -> list[Notice]:
-        marks = ",".join("?" * len(ACTIVE))
-        return [_row(r) for r in self.db.query(f"SELECT * FROM stock_notices WHERE item_code=? AND status IN ({marks})", (item_code, *ACTIVE))]  # only "?" placeholders are formatted in  # nosec B608
+        return [_row(r) for r in self.store.active_for_item(item_code, ACTIVE)]
 
     def set_approval(self, nid: str, approval_id: str) -> None:
-        self.db.execute("UPDATE stock_notices SET approval_id=?, updated_at=? WHERE id=?", (approval_id, iso(self.clock()), nid))
+        self.store.set_approval(nid, approval_id, iso(self.clock()))
 
     def set_status(self, nid: str, status: str, snoozed_until: Optional[datetime] = None) -> None:
-        self.db.execute("UPDATE stock_notices SET status=?, updated_at=?, snoozed_until=COALESCE(?, snoozed_until) WHERE id=?",
-                        (status, iso(self.clock()), iso(snoozed_until) if snoozed_until else None, nid))
+        self.store.set_status(nid, status, iso(self.clock()), iso(snoozed_until) if snoozed_until else None)
 
     def list(self, limit: int = 100) -> list[Notice]:
-        return [_row(r) for r in self.db.query("SELECT * FROM stock_notices ORDER BY created_at DESC, rowid DESC LIMIT ?", (limit,))]
+        return [_row(r) for r in self.store.list(limit)]
 
 
 def _row(r) -> Notice:

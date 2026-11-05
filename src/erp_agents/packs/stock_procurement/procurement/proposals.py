@@ -5,9 +5,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional
 
+from ai_munimji_engine.storage import dumps, loads
+from ai_munimji_engine.stores.stock.proposals import ProposalStore
+
 from erp_agents.core.common import Clock, iso, parse_dt, short_id, utcnow
-from erp_agents.core.storage import Database, dumps, loads
-from ..schema import ensure_schema
 
 OPEN_STATUSES = ("awaiting", "manual")      # a request is out and unanswered: do not ask again for the same item
 
@@ -42,69 +43,46 @@ class Proposal:
 
 
 class ProposalRepo:
-    def __init__(self, db: Database, clock: Clock = utcnow) -> None:
-        ensure_schema(db)
-        self.db, self.clock = db, clock
+    def __init__(self, store: ProposalStore, clock: Clock = utcnow) -> None:
+        self.store, self.clock = store, clock
 
     def create(self, work_order_id: str, item_code: str, status: str, *, supplier: Optional[str] = None,
                supplier_name: Optional[str] = None, qty: Optional[float] = None, rate: Optional[float] = None,
                total: Optional[float] = None, ranking: Optional[dict[str, Any]] = None, note: str = "") -> Proposal:
         now, pid = iso(self.clock()), short_id(10)
-        self.db.execute(
-            "INSERT INTO proposals(id, work_order_id, item_code, status, supplier, supplier_name, qty, rate, total, ranking_json, status_note, created_at, updated_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (pid, work_order_id, item_code, status, supplier, supplier_name, qty, rate, total, dumps(ranking) if ranking else None, note, now, now),
-        )
+        self.store.insert(pid, work_order_id, item_code, status, supplier, supplier_name, qty, rate, total, dumps(ranking) if ranking else None, note, now)
         return self.get(pid)  # type: ignore[return-value]
 
     def get(self, pid: str) -> Optional[Proposal]:
-        r = self.db.query_one("SELECT * FROM proposals WHERE id=?", (pid,))
+        r = self.store.get(pid)
         return _row(r) if r else None
 
     def by_approval(self, approval_id: str) -> Optional[Proposal]:
-        r = self.db.query_one("SELECT * FROM proposals WHERE approval_id=?", (approval_id,))
+        r = self.store.by_approval(approval_id)
         return _row(r) if r else None
 
     def open_for_item(self, item_code: str) -> list[Proposal]:
-        marks = ",".join("?" for _ in OPEN_STATUSES)
-        return [_row(r) for r in self.db.query(f"SELECT * FROM proposals WHERE item_code=? AND status IN ({marks})", (item_code, *OPEN_STATUSES))]  # only "?" placeholders are formatted in  # nosec B608
+        return [_row(r) for r in self.store.open_for_item(item_code, OPEN_STATUSES)]
 
     def snoozed_due(self) -> list[Proposal]:
-        now = iso(self.clock())
-        return [_row(r) for r in self.db.query("SELECT * FROM proposals WHERE status='snoozed' AND snoozed_until IS NOT NULL AND snoozed_until <= ?", (now,))]
+        return [_row(r) for r in self.store.snoozed_due(iso(self.clock()))]
 
     def list(self, status: Optional[str] = None, item_code: Optional[str] = None, limit: int = 100) -> list[Proposal]:
-        sql, params, conds = "SELECT * FROM proposals", [], []
-        if status:
-            conds.append("status=?"); params.append(status)
-        if item_code:
-            conds.append("item_code=?"); params.append(item_code)
-        if conds:
-            sql += " WHERE " + " AND ".join(conds)
-        sql += " ORDER BY created_at DESC LIMIT ?"
-        params.append(limit)
-        return [_row(r) for r in self.db.query(sql, params)]
+        return [_row(r) for r in self.store.list(status, item_code, limit)]
 
     def set_ranking(self, pid: str, ranking: dict[str, Any]) -> None:
-        self.db.execute("UPDATE proposals SET ranking_json=?, updated_at=? WHERE id=?", (dumps(ranking), iso(self.clock()), pid))
+        self.store.set_ranking(pid, dumps(ranking), iso(self.clock()))
 
     def set_approval(self, pid: str, approval_id: str) -> None:
-        self.db.execute("UPDATE proposals SET approval_id=?, updated_at=? WHERE id=?", (approval_id, iso(self.clock()), pid))
+        self.store.set_approval(pid, approval_id, iso(self.clock()))
 
     def revise(self, pid: str, *, supplier: Optional[str], supplier_name: Optional[str], qty: Optional[float], rate: Optional[float], total: Optional[float], note: str) -> None:
         """The owner changed the quantity or the vendor of an open proposal: it stays the same proposal, awaiting an answer."""
-        self.db.execute("UPDATE proposals SET supplier=?, supplier_name=?, qty=?, rate=?, total=?, status_note=?, updated_at=? WHERE id=?",
-                        (supplier, supplier_name, qty, rate, total, note, iso(self.clock()), pid))
+        self.store.revise(pid, supplier, supplier_name, qty, rate, total, note, iso(self.clock()))
 
     def update_status(self, pid: str, status: str, note: str = "", **extra: Any) -> None:
-        sets, params = ["status=?", "status_note=?", "updated_at=?"], [status, note, iso(self.clock())]
-        for col in ("po_name", "snoozed_until"):
-            if col in extra:
-                sets.append(f"{col}=?")
-                v = extra[col]
-                params.append(iso(v) if isinstance(v, datetime) else v)
-        params.append(pid)
-        self.db.execute(f"UPDATE proposals SET {', '.join(sets)} WHERE id=?", params)  # the column names come from the fixed tuple above and every value is bound  # nosec B608
+        columns = {col: (iso(v) if isinstance(v, datetime) else v) for col, v in extra.items() if col in ("po_name", "snoozed_until")}
+        self.store.update_status(pid, status, note, iso(self.clock()), columns)
 
 
 def _row(r) -> Proposal:

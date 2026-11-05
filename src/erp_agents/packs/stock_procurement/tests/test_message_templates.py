@@ -52,8 +52,7 @@ def test_a_value_is_never_looked_into_even_if_it_looks_like_a_placeholder():
 
 def test_a_template_saved_before_the_check_is_ignored_with_a_warning_instead_of_leaking_or_breaking_the_follow_up(make_app, caplog):
     app = make_app()
-    app.db.execute("INSERT INTO settings_overrides(scope_type, scope_key, data_json, updated_by, updated_at) VALUES (?,?,?,?,?)",
-                   ("followup", "*", json.dumps({"chase_message": "Dear {vendor.__class__} {days_late.__class__}", "chase_max": 2}), "old", "2026-10-01T00:00:00+00:00"))
+    app.stores.settings.save("followup", "*", json.dumps({"chase_message": "Dear {vendor.__class__} {days_late.__class__}", "chase_max": 2}), "old", "2026-10-01T00:00:00+00:00", [])
     with caplog.at_level(logging.WARNING):
         cfg = app.settings.followup()
     assert cfg.chase_message == FollowUpSettings().chase_message and cfg.chase_max == 2                    # only the bad value is dropped, the rest of the save is kept

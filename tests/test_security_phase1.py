@@ -316,9 +316,10 @@ def test_free_text_tool_arguments_are_capped_and_nothing_is_prepared(make_app):
 def test_the_tool_call_record_holds_no_control_characters(make_app):
     app = make_app(erp=MockERP())
     app.toolkit.call("stock_status", {"item_code": "BOLT-M8\x00\n", "junk\nname": 1}, OWNER)
-    rows = app.db.query("SELECT * FROM agent_tools") if app.db.query_one("SELECT name FROM sqlite_master WHERE name='agent_tools'") else []
+    rows = app.agent_log.tool_calls(limit=20)
+    assert rows
     for row in rows:
-        assert not any(c in json.dumps(dict(row)) for c in ("\\n", "\\u0000"))
+        assert not any(ord(ch) < 32 for value in row.values() for ch in str(value))             # not one raw control character is kept
 
 
 def test_log_lines_from_strangers_are_cleaned(make_app, caplog):

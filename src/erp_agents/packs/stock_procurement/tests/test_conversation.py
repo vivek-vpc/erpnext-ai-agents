@@ -86,7 +86,7 @@ def propose(app, **settings):
 
 
 def message_id_of(app, approval_id, chat=OWNER_CHAT):
-    return int(app.db.query_one("SELECT external_id FROM deliveries WHERE approval_id=? AND address=?", (approval_id, chat))["external_id"])
+    return int(next(d for d in app.stores.approvals.deliveries(approval_id) if d["address"] == chat)["external_id"])
 
 
 def waiting(app):
@@ -159,7 +159,7 @@ def test_asking_for_an_order_whose_request_is_already_waiting_sends_that_request
     mine = sent(http)[owner_before:]
     assert "already waiting" in mine[0]["text"] and mine[-1].get("reply_markup") and rec.request.title in mine[-1]["text"]
     assert len(sent(http, "556")) == other_before and len(waiting(app)) == 1 and waiting(app)[0].id == rec.id
-    assert len(app.db.query("SELECT 1 FROM deliveries WHERE approval_id=? AND address=?", (rec.id, OWNER_CHAT))) == 2     # the new message is remembered, so replying to it works
+    assert len([d for d in app.stores.approvals.deliveries(rec.id) if d["address"] == OWNER_CHAT]) == 2     # the new message is remembered, so replying to it works
     assert not app.erp.purchase_orders
 
 

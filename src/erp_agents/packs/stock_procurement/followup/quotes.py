@@ -20,7 +20,7 @@ from erp_agents.core.approvals.models import ApprovalRecord, Decision, DecisionR
 from erp_agents.core.approvals.service import KindHandler
 from erp_agents.core.common import iso, short_id, untrusted
 from erp_agents.core.erp.base import QuoteRule
-from erp_agents.core.storage import dumps, loads
+from ai_munimji_engine.storage import dumps, loads
 from ..inventory.agent import on_demand_payload
 from ..procurement.scoring import Need, rank_vendors
 from .messages import KIND_QUOTE_REQUEST, KIND_QUOTES, build_quote_request, build_quotes_request, fill
@@ -46,7 +46,7 @@ class QuoteRounds:
         return self.app.inventory.today()
 
     def get(self, round_id: str) -> Optional[dict[str, Any]]:
-        row = self.app.db.query_one("SELECT * FROM quote_rounds WHERE id=?", (round_id,))
+        row = self.app.stock_stores.quotes.get(round_id)
         if row is None:
             return None
         out = dict(row)
@@ -54,16 +54,11 @@ class QuoteRounds:
         return out
 
     def list(self, status: Optional[str] = None, limit: int = 20) -> list[dict[str, Any]]:
-        if status:
-            rows = self.app.db.query("SELECT id FROM quote_rounds WHERE status=? ORDER BY created_at DESC LIMIT ?", (status, limit))
-        else:
-            rows = self.app.db.query("SELECT id FROM quote_rounds ORDER BY created_at DESC LIMIT ?", (limit,))
-        return [self.get(r["id"]) for r in rows]
+        return [self.get(round_id) for round_id in self.app.stock_stores.quotes.ids(status or None, limit)]
 
     def _set(self, round_id: str, **fields: Any) -> None:
         fields["updated_at"] = iso(self.app.clock())
-        cols = ", ".join(f"{k}=?" for k in fields)
-        self.app.db.execute(f"UPDATE quote_rounds SET {cols} WHERE id=?", (*fields.values(), round_id))  # column names come from this module, values are bound  # nosec B608
+        self.app.stock_stores.quotes.update(round_id, fields)
         if fields.get("status") in ("compared", "ordered", "closed"):
             self.messenger.close_replies("quote", round_id)           # the round is over: a vendor's later message is not a reply to the request for a price
 
@@ -106,10 +101,9 @@ class QuoteRounds:
         rid = short_id(8)
         message = self.message_for({"supplier": "", "name": "<vendor name>"}, item, qty, reply_by, rid)
         req = build_quote_request(rid, item, qty, shown, message, reply_by, untrusted(reason, 300))
-        with self.app.db.transaction():
-            self.app.db.execute("INSERT INTO quote_rounds(id, item_code, qty, uom, suppliers_json, status, reply_by, requested_by, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
-                                (rid, item.code, qty, item.uom, dumps([{"supplier": v["supplier"], "name": v["name"]} for v in can]), "proposed", reply_by.isoformat(),
-                                 requested_by, now, now))
+        with self.app.stores.transaction():
+            self.app.stock_stores.quotes.insert(rid, item.code, qty, item.uom, dumps([{"supplier": v["supplier"], "name": v["name"]} for v in can]), reply_by.isoformat(),
+                                                requested_by, now)
             record = self.app.approvals.submit(req, deliver=False)
             self._set(rid, approval_id=record.id)
         self.app.approvals.deliver(record)
@@ -209,7 +203,7 @@ class QuoteRounds:
     def _compare(self, r: dict[str, Any], fresh: list[Any], missing: list[str]) -> ApprovalRecord:
         item, ranking = self.comparison(r, fresh)
         req = build_quotes_request(r["id"], item, r["qty"], ranking, r["suppliers"], missing, date.fromisoformat(r["reply_by"]))
-        with self.app.db.transaction():
+        with self.app.stores.transaction():
             record = self.app.approvals.submit(req, deliver=False)
             self._set(r["id"], status="compared", comparison_id=record.id)
         self.app.approvals.deliver(record)

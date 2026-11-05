@@ -8,6 +8,7 @@ from erp_agents.core.approvals.inbound import process_inbound
 from erp_agents.core.approvals.models import InboundEvent
 from erp_agents.core.workorders import REORDER_NEEDED
 from erp_agents.core.erp.mock import MockERP
+from conftest import table_rows
 
 CHAT = "555"
 
@@ -75,7 +76,7 @@ def test_choosing_another_vendor_does_the_same(world):
 
 def test_typing_the_new_quantity_in_reply_to_the_request_does_the_same(world):
     app, http, rec = world
-    external_id = app.db.query_one("SELECT external_id FROM deliveries WHERE approval_id=? AND channel='telegram'", (rec.id,))["external_id"]
+    external_id = next(d for d in app.stores.approvals.deliveries(rec.id) if d["channel"] == "telegram")["external_id"]
     before = len(http.calls)
     process_inbound(InboundEvent(channel="telegram", sender=CHAT, text="800", reply_to=external_id), app.router, app.approvals, app.conversation)
     assert sent_after(http, before) == ["CANCELLED", "DONE", "REQUEST"]
@@ -101,9 +102,9 @@ def test_a_held_back_request_is_sent_once_whatever_happens_to_the_reply(world):
     app, http, rec = world
     from conftest import OWNER as owner
     res = app.approvals.decide(rec.id, "change_qty", owner, "telegram", {"qty": 800}, defer=True)
-    assert res.after is not None and not any(r.request.facts.get("qty") == 800 and r.id in [d["approval_id"] for d in app.db.query("SELECT approval_id FROM deliveries WHERE channel='telegram'")]
+    assert res.after is not None and not any(r.request.facts.get("qty") == 800 and r.id in [d["approval_id"] for d in table_rows(app, "deliveries", {"channel": "telegram"})]
                                              for r in app.approvals.list("pending"))     # not delivered yet
     res.after()
     res.after()
-    sent = [d for d in app.db.query("SELECT approval_id FROM deliveries WHERE channel='telegram'") if d["approval_id"] != rec.id]
+    sent = [d for d in table_rows(app, "deliveries", {"channel": "telegram"}) if d["approval_id"] != rec.id]
     assert len(sent) == 1                                                                  # a second call does not send it again

@@ -150,13 +150,12 @@ class DeliveryChaser:
         route = self.messenger.route(order["supplier"])
         req = build_chase_request(order, self.effects(order), message, route, sends, cfg)
         now = iso(self.app.clock())
-        with self.app.db.transaction():
+        with self.app.stores.transaction():
             record = self.app.approvals.submit(req, deliver=False)
             if chase is None:
-                self.app.db.execute("INSERT INTO delivery_chases(po_name, supplier, item_code, status, first_late_on, asked_at, asks, approval_id, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
-                                    (order["document"], order["supplier"], order["lines"][0]["item_code"], "open", today.isoformat(), now, 1, record.id, now))
+                self.app.stock_stores.chases.start(order["document"], order["supplier"], order["lines"][0]["item_code"], today.isoformat(), now, record.id, now)
             else:
-                self.app.db.execute("UPDATE delivery_chases SET status='open', asked_at=?, asks=asks+1, approval_id=?, updated_at=? WHERE po_name=?", (now, record.id, now, order["document"]))
+                self.app.stock_stores.chases.reopen(order["document"], now, record.id, now)
         self.app.approvals.deliver(record)
         return record
 
@@ -171,31 +170,30 @@ class DeliveryChaser:
         """Chases whose order is no longer late and open: the goods came, or the order was closed. Their open request is withdrawn."""
         closed = 0
         open_names = {o["document"] for o in self.open_orders()}
-        for row in self.app.db.query("SELECT po_name, approval_id FROM delivery_chases WHERE status='open'"):
+        for row in self.app.stock_stores.chases.open_chases():
             if row["po_name"] in late_names:
                 continue
             still_open = row["po_name"] in open_names
             if still_open:                                   # open but no longer late (a new due date): keep watching, nothing to withdraw unless it is pending
                 continue
-            self.app.db.execute("UPDATE delivery_chases SET status='arrived', updated_at=? WHERE po_name=?", (iso(self.app.clock()), row["po_name"]))
+            self.app.stock_stores.chases.set_status(row["po_name"], "arrived", iso(self.app.clock()))
             if row["approval_id"]:
                 self.app.approvals.cancel(row["approval_id"], "the delivery has arrived (or the order was closed)")
             closed += 1
-        for ref in {r["ref_id"] for r in self.app.db.query("SELECT DISTINCT ref_id FROM vendor_messages WHERE purpose='chase' AND closed_at IS NULL")}:
+        for ref in self.app.stock_stores.vendors.open_chase_refs():
             if ref not in open_names:                        # the goods came or the order was closed, even if a person had stopped the chase: a later message is not a reply
                 self.messenger.close_replies("chase", ref)
         return closed
 
     def _chase(self, po: str) -> Optional[dict[str, Any]]:
-        row = self.app.db.query_one("SELECT * FROM delivery_chases WHERE po_name=?", (po,))
-        return dict(row) if row else None
+        return self.app.stock_stores.chases.get(po)
 
     # ---------------------------------------------------------------- the person's answer
     def _on_decision(self, record: ApprovalRecord, decision: Decision) -> None:
         po = record.request.facts.get("po")
         now = iso(self.app.clock())
         if decision.action == "dismiss":
-            self.app.db.execute("UPDATE delivery_chases SET status='dismissed', updated_at=? WHERE po_name=?", (now, po))
+            self.app.stock_stores.chases.set_status(po, "dismissed", now)
             return
         if decision.action != "send":
             return                                           # "later": asked again after chase_every_days if still late
@@ -209,12 +207,12 @@ class DeliveryChaser:
                                   f"{decision.actor_id} via {decision.channel}")
         if not out.ok:
             raise DecisionRefused(f"The reminder could not be sent ({out.note}).")
-        self.app.db.execute("UPDATE delivery_chases SET sent_at=?, sends=sends+1, updated_at=? WHERE po_name=?", (now, now, po))
+        self.app.stock_stores.chases.record_send(po, now)
 
     def _outcome_detail(self, record: ApprovalRecord) -> str:
         if not record.decision or record.decision.action != "send":
             return ""
-        row = self.app.db.query_one("SELECT channel FROM vendor_messages WHERE approval_id=? AND status='sent' ORDER BY sent_at DESC LIMIT 1", (record.id,))
-        if row is None:
+        channel = self.app.stock_stores.vendors.last_sent_channel(record.id)
+        if channel is None:
             return ""
-        return "The reminder was sent " + ("by e-mail through ERPNext." if row["channel"] == "email" else "by WhatsApp.") + " A reply on WhatsApp is passed on to you here."
+        return "The reminder was sent " + ("by e-mail through ERPNext." if channel == "email" else "by WhatsApp.") + " A reply on WhatsApp is passed on to you here."

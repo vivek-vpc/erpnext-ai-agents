@@ -14,6 +14,7 @@ from erp_agents.core.erp.base import ItemInfo
 from erp_agents.core.erp.erpnext import ERPNextClient
 from erp_agents.core.erp.mock import MockERP
 from test_assistant import FakeLLM
+from conftest import tamper
 
 ITEMS = [ItemInfo("FAS-0003", "Hex Bolt SS304 M10x50", "Fasteners & Hardware", "Nos"), ItemInfo("FAS-0004", "Hex Bolt SS304 M12x70", "Fasteners & Hardware", "Nos"),
          ItemInfo("MET-0005", "Copper Rod 10mm", "Metals - Raw Material", "Kg"), ItemInfo("PKG-0003", "Stretch Film 500mm 20 micron", "Packaging Materials", "Roll")]
@@ -203,7 +204,7 @@ def test_too_many_questions_in_a_minute_are_refused(world):
 def test_every_question_is_logged_for_audit(world):
     ask(world, "What is running low?")
     ask(world, "tell me a joke")
-    rows = world.db.query("SELECT asked_by, question, intent, status, source FROM chat_log ORDER BY id")
+    rows = world.stock_stores.assistant.chats(10)
     assert [(r["intent"], r["status"], r["source"]) for r in rows] == [("stock_overview", "answered", "rules"), ("help", "help", "rules")] and rows[0]["asked_by"] == "tester"
 
 
@@ -253,10 +254,11 @@ def test_asking_for_an_order_prepares_the_usual_request_and_orders_nothing(fresh
 
 def _strip_change_buttons(app, rec):
     """What a request made before Change quantity / Change vendor existed looks like."""
-    row = app.db.query_one("SELECT request_json FROM approvals WHERE id=?", (rec.id,))
-    req = json.loads(row["request_json"])
-    req["options"] = [o for o in req["options"] if o["action"] not in ("change_qty", "change_vendor")]
-    app.db.execute("UPDATE approvals SET request_json=? WHERE id=?", (json.dumps(req), rec.id))
+    def strip(row):
+        req = json.loads(row["request_json"])
+        req["options"] = [o for o in req["options"] if o["action"] not in ("change_qty", "change_vendor")]
+        return {"request_json": json.dumps(req)}
+    tamper(app, "approvals", {"id": rec.id}, strip)
 
 
 def test_a_waiting_request_from_an_older_version_is_rebuilt_with_the_new_buttons(fresh):

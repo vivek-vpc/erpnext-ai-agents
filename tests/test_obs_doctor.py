@@ -17,6 +17,8 @@ from erp_agents.core.ops import InstanceLock
 from erp_agents.core.storage import Database
 from erp_agents.stores.sqlite_core import SqliteAuditStore, SqliteJobRunStore
 
+pytestmark = pytest.mark.sqlite_only          # about the SQLite file itself: it is not run again when the suite is set to another storage
+
 NOW = time.time()
 Usage = namedtuple("Usage", "total used free")
 

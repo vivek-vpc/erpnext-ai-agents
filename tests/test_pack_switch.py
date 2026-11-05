@@ -34,7 +34,7 @@ def pack_off(app):
 def test_the_stock_pack_is_on_by_default_and_its_parts_are_there(make_app, clock):
     app = build(make_app, clock)
     assert app.packs.enabled_names() == [STOCK] and STOCK in app.packs.loaded
-    assert sorted(app.services) == ["alerts", "assistant", "chat", "followup", "inventory", "procurement", "proposals", "stock_insight", "transfers"]
+    assert sorted(app.services) == ["alerts", "assistant", "chat", "followup", "inventory", "procurement", "proposals", "stock_insight", "stock_stores", "transfers"]
     assert app.toolkit.registered_for(STOCK) == {t.name: (t.role, t.effect) for t in app.packs.manifests[STOCK].tools}
 
 

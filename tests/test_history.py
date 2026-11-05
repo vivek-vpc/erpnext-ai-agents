@@ -12,6 +12,7 @@ from conftest import OWNER, VIEWER
 from erp_agents.core.api.app import create_app
 from erp_agents.core.common import Actor
 from erp_agents.core.erp.mock import MockERP
+from conftest import tamper, remove_rows
 
 PRIYA = Actor("priya@acme.example", frozenset({"admin", "approver"}), "test")
 
@@ -104,31 +105,31 @@ def test_closed_decisions_and_settings_changes_are_sealed_and_verify(world):
 
 def test_a_decision_changed_after_it_was_sealed_shows(world):
     app, ids = world
-    row = app.db.query_one("SELECT decision_json FROM approvals WHERE id=?", (ids["po"],))
-    app.db.execute("UPDATE approvals SET decision_json=? WHERE id=?", (row["decision_json"].replace("priya@acme.example", "someone-else"), ids["po"]))
+    tamper(app, "approvals", {"id": ids["po"]}, lambda r: {"decision_json": r["decision_json"].replace("priya@acme.example", "someone-else")})
     res = app.audit.verify()
     assert not res["ok"] and any(f"request {ids['po']} was changed after it was sealed" in p for p in res["problems"])
 
 
 def test_a_deleted_decision_shows(world):
     app, ids = world
-    app.db.execute("DELETE FROM approvals WHERE id=?", (ids["reorder"],))
+    remove_rows(app, "approvals", {"id": ids["reorder"]})
     assert any(f"request {ids['reorder']} was deleted" in p for p in app.audit.verify()["problems"])
 
 
 def test_an_edited_seal_shows(world):
     app, _ = world
     # Change the first character of the stored digest. It is random hex, so writing a fixed '0' left it unchanged one time in sixteen and the edit went unnoticed because there was none.
-    app.db.execute("UPDATE audit_chain SET digest=CASE substr(digest, 1, 1) WHEN '0' THEN '1' ELSE '0' END || substr(digest, 2) WHERE seq=2")
+    tamper(app, "audit_chain", {"seq": 2}, lambda r: {"digest": ("1" if r["digest"][0] == "0" else "0") + r["digest"][1:]})
     assert any("the seal itself was edited at entry 2" in p for p in app.audit.verify()["problems"])
 
 
 def test_a_changed_setting_after_sealing_shows(world):
     app, _ = world
-    app.db.execute("UPDATE settings_audit SET new_json='99' WHERE field='min_days_cover'")
+    tamper(app, "settings_audit", {"field": "min_days_cover"}, lambda r: {"new_json": "99"})
     assert any("settings change" in p and "was changed after it was sealed" in p for p in app.audit.verify()["problems"])
 
 
+@pytest.mark.sqlite_only
 def test_what_was_closed_before_the_seal_existed_is_sealed_at_start(tmp_path, clock):
     from erp_agents.core.bootstrap import build_app
     from erp_agents.core.config import DEFAULT_CONFIG

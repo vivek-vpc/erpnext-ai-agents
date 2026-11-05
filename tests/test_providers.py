@@ -481,6 +481,7 @@ def test_the_runtime_tells_a_client_which_tools_exist(make_app, clock):
     assert AgentRuntime                                                                                  # imported for the type of the thing under test
 
 
+@pytest.mark.sqlite_only
 def test_an_existing_database_gets_the_new_column_and_keeps_its_rows(tmp_path):
     path = str(tmp_path / "old.db")
     old = sqlite3.connect(path)

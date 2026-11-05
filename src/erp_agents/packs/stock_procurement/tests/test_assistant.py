@@ -147,7 +147,7 @@ def test_rejected_answers_are_also_stored_so_the_result_is_repeatable(world):
     llm.replies.append({"answerable": True, "answer": "You have 450 pcs.", "facts_used": ["F1"]})
     assert ask(app, bolt.id, "q")["status"] == "rejected"
     assert ask(app, bolt.id, "q")["status"] == "rejected" and len(llm.calls) == 1
-    row = app.db.query_one("SELECT result_json FROM assistant_answers")
+    (row,) = app.stock_stores.assistant.answers_for(bolt.id)
     assert "450" in json.loads(row["result_json"])["draft"]                      # kept for audit, never shown
 
 

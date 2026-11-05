@@ -21,6 +21,7 @@ from erp_agents.core.common import iso
 from erp_agents.core.erp.base import SupplierContact
 from erp_agents.packs.stock_procurement.settings import FollowUpSettings
 from test_followup import APPROVER_NUMBER, NUMBER, erp, late_order, pending, texts_to, wa_app  # noqa: F401  (the follow-up tests' fixtures and helpers)
+from conftest import table_rows, put_row
 
 OTHER_NUMBER = "919876543210"
 
@@ -38,7 +39,7 @@ def say(app, text, sender=NUMBER):
 
 
 def stored(app):
-    return app.db.query_one("SELECT COUNT(*) AS n FROM vendor_replies")["n"]
+    return len(table_rows(app, "vendor_replies"))
 
 
 def passed_on(http):
@@ -52,8 +53,8 @@ def more_replies(http):
 def legacy_message(app, clock, sent_at=None, ref="PO-EXT-0009"):
     """A message as the old code recorded it: an unkeyed SHA-256 of the number, no hash_kind."""
     plain = hashlib.sha256(f"whatsapp:{NUMBER}".encode()).hexdigest()
-    app.db.execute("INSERT INTO vendor_messages(id, purpose, ref_id, supplier, channel, address_hash, status, approval_id, sent_by, sent_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
-                   ("legacy1", "chase", ref, "SUP-BUDGET", "whatsapp", plain, "sent", None, "owner", iso(sent_at or clock())))
+    put_row(app, "vendor_messages", {"id": "legacy1", "purpose": "chase", "ref_id": ref, "supplier": "SUP-BUDGET", "channel": "whatsapp", "address_hash": plain, "hash_kind": None, "status": "sent",
+                                     "error": None, "approval_id": None, "sent_by": "owner", "sent_at": iso(sent_at or clock()), "closed_at": None})
 
 
 # ====================================================================== F-7: a flood of replies
@@ -120,7 +121,7 @@ def test_the_limits_are_settings_with_sensible_bounds():
 def test_the_stored_hash_is_keyed_not_a_plain_sha256_of_the_number(wa_app):
     app, http = wa_app
     chase_sent(app)
-    row = dict(app.db.query_one("SELECT address_hash, hash_kind FROM vendor_messages"))
+    row = table_rows(app, "vendor_messages")[0]
     plain = hashlib.sha256(f"whatsapp:{NUMBER}".encode()).hexdigest()
     assert row["address_hash"] and len(row["address_hash"]) == 64 and row["address_hash"] != plain and row["hash_kind"] == "hmac1"
 
@@ -141,7 +142,7 @@ def test_without_a_key_no_hash_is_stored_a_reply_cannot_be_matched_and_the_log_s
     with caplog.at_level(logging.WARNING):
         chase_sent(app)
         say(app, "Ships Friday")
-    assert dict(app.db.query_one("SELECT address_hash, hash_kind FROM vendor_messages")) == {"address_hash": None, "hash_kind": None}
+    assert {k: table_rows(app, "vendor_messages")[0][k] for k in ("address_hash", "hash_kind")} == {"address_hash": None, "hash_kind": None}
     assert stored(app) == 0
     assert any("ERP_AGENTS_HASH_KEY" in r.getMessage() for r in caplog.records)
 
@@ -150,7 +151,7 @@ def test_a_key_that_is_too_short_counts_as_no_key(wa_app, monkeypatch):
     app, http = wa_app
     monkeypatch.setenv("ERP_AGENTS_HASH_KEY", "short")
     chase_sent(app)
-    assert app.db.query_one("SELECT address_hash FROM vendor_messages")["address_hash"] is None
+    assert table_rows(app, "vendor_messages")[0]["address_hash"] is None
 
 
 def test_a_message_sent_before_the_keyed_hash_is_still_recognised_until_its_window_ends(wa_app, clock):
@@ -171,8 +172,8 @@ def test_hashes_are_erased_when_their_reply_window_ends_and_the_daily_job_does_i
     assert app.followup.messenger.forget_expired() == 0
     clock.advance(days=11)
     app.followup.daily()
-    assert app.db.query_one("SELECT COUNT(*) AS n FROM vendor_messages WHERE address_hash IS NOT NULL")["n"] == 0
-    assert app.db.query_one("SELECT COUNT(*) AS n FROM vendor_messages")["n"] == 2                          # the record that a message was sent stays; only the hash goes
+    assert not [m for m in table_rows(app, "vendor_messages") if m["address_hash"] is not None]
+    assert len(table_rows(app, "vendor_messages")) == 2                          # the record that a message was sent stays; only the hash goes
 
 
 # ====================================================================== F-9: the reply window
@@ -203,7 +204,7 @@ def test_when_the_goods_arrive_the_reply_window_closes(wa_app):
     assert app.followup.chaser.run()["arrived"] == 1
     say(app, "Sorry, one more thing")
     assert stored(app) == 1
-    row = dict(app.db.query_one("SELECT closed_at, address_hash FROM vendor_messages"))
+    row = table_rows(app, "vendor_messages")[0]
     assert row["closed_at"] and row["address_hash"] is None
 
 
@@ -216,7 +217,7 @@ def test_when_a_price_round_is_compared_its_reply_window_closes(wa_app, clock):
     clock.advance(days=4)
     assert app.followup.quotes.check()["compared"] == 1
     say(app, "Actually 8.20")
-    assert stored(app) == 1 and app.db.query_one("SELECT COUNT(*) AS n FROM vendor_messages WHERE purpose='quote' AND closed_at IS NOT NULL")["n"] >= 1
+    assert stored(app) == 1 and len([m for m in table_rows(app, "vendor_messages", {"purpose": "quote"}) if m["closed_at"] is not None]) >= 1
 
 
 # ====================================================================== doctor and the start-up log
@@ -242,14 +243,15 @@ def test_starting_with_whatsapp_and_no_key_is_reported_in_the_log(make_app, erp,
 
 
 # ====================================================================== schema version 4
+@pytest.mark.sqlite_only
 def test_a_version_3_database_gets_the_new_columns_and_keeps_its_rows(tmp_path):
     from erp_agents.core.storage import Database
     from erp_agents.packs.stock_procurement import schema as stock
-    from erp_agents.packs.stock_procurement.inventory.alerts import AlertRepo
+    from erp_agents.packs.stock_procurement.stores import sqlite_stock_stores
 
     path = tmp_path / "v3.db"
     db = Database(str(path))
-    AlertRepo(db)
+    sqlite_stock_stores(db)
     db.close()
     c = sqlite3.connect(path)                                                                                   # the vendor tables as version 3 left them
     c.executescript(
@@ -264,7 +266,7 @@ def test_a_version_3_database_gets_the_new_columns_and_keeps_its_rows(tmp_path):
     c.commit()
     c.close()
     db = Database(str(path))
-    AlertRepo(db)
+    sqlite_stock_stores(db)
     columns = lambda table: {r["name"] for r in db.query(f"PRAGMA table_info({table})")}                          # noqa: E731
     assert {"hash_kind", "closed_at"} <= columns("vendor_messages") and {"relayed", "text_hash"} <= columns("vendor_replies")
     assert dict(db.query_one("SELECT address_hash, hash_kind, closed_at FROM vendor_messages WHERE id='m1'")) == {"address_hash": "abc123", "hash_kind": None, "closed_at": None}

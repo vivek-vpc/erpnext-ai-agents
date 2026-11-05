@@ -164,6 +164,11 @@ class ApprovalService:
         """The approval a chat message was about: the request that was sent as message `external_id` on `channel` to `address` (its most recent delivery)."""
         return self.store.approval_for_message(channel, str(external_id), str(address))
 
+    def latest_of_kind(self, kind: str) -> Optional[dict[str, Any]]:
+        """When the newest request of this kind was made and where it stands ({'created_at', 'status'}), or None."""
+        row = self.store.latest_of_kind(kind)
+        return {"created_at": row["created_at"], "status": row["status"]} if row else None
+
     def list(self, status: Optional[str] = None, limit: int = 50) -> list[ApprovalRecord]:
         return [_row_to_record(r) for r in self.store.list(status or None, limit)]
 

@@ -134,9 +134,7 @@ class CycleCounts:
             negative = bool(stock.get(it.code) and stock[it.code].on_hand < 0)
             rows.append({"item_code": it.code, "item_name": it.name, "class": cls, "last_counted": counted.isoformat() if counted else None, "due_on": due.isoformat(),
                          "overdue_days": max((today - due).days, 0), "negative_stock": negative, "uom": it.uom})
-            self.app.db.execute("INSERT INTO cycle_counts(item_code, abc_class, last_counted_on, due_on, updated_at) VALUES (?,?,?,?,?) "
-                                "ON CONFLICT(item_code) DO UPDATE SET abc_class=excluded.abc_class, last_counted_on=excluded.last_counted_on, due_on=excluded.due_on, updated_at=excluded.updated_at",
-                                (it.code, cls, counted.isoformat() if counted else None, due.isoformat(), now))
+            self.app.stock_stores.counts.upsert_schedule(it.code, cls, counted.isoformat() if counted else None, due.isoformat(), now)
         rows.sort(key=lambda r: (not r["negative_stock"], r["due_on"], r["class"], r["item_code"]))
         return {"available": True, "items": rows, "classes": {k: sum(1 for r in rows if r["class"] == k) for k in "ABC"},
                 "due_now": sum(1 for r in rows if r["due_on"] <= today.isoformat() or r["negative_stock"])}
@@ -161,7 +159,7 @@ class CycleCounts:
             return {"sent": False, "items": len(p.get("plan") or [])}
         today = self.app.inventory.today().isoformat()
         for r in p["plan"]:
-            self.app.db.execute("UPDATE cycle_counts SET planned_on=? WHERE item_code=?", (today, r["item_code"]))
+            self.app.stock_stores.counts.mark_planned(r["item_code"], today)
         record = self.app.approvals.submit(build_plan_request(p))
         return {"sent": True, "approval_id": record.id, "items": len(p["plan"])}
 
@@ -174,7 +172,7 @@ class CycleCounts:
         recent = [c for c in counts if c.submitted and c.posting_date and c.posting_date >= today - timedelta(days=days)]
         notable = [c for c in recent if abs(c.counted_qty - c.system_qty) >= 1 and abs(c.counted_qty - c.system_qty) / max(abs(c.system_qty), 1.0) * 100 >= cfg.variance_notable_pct]
         if only_new:
-            notable = [c for c in notable if not self.app.db.query_one("SELECT 1 FROM count_reviews WHERE document=? AND item_code=? AND warehouse=?", (c.document, c.item_code, c.warehouse))]
+            notable = [c for c in notable if not self.app.stock_stores.counts.reviewed(c.document, c.item_code, c.warehouse)]
         if not notable:
             return {"available": True, "documents": [], "lines": 0}
         items, stock, rates, unit = self._usage()
@@ -209,11 +207,10 @@ class CycleCounts:
         sent = 0
         now = iso(self.app.clock())
         for d in v["documents"]:
-            with self.app.db.transaction():
+            with self.app.stores.transaction():
                 record = self.app.approvals.submit(build_variance_request(d), deliver=False)
                 for l in d["lines"]:
-                    self.app.db.execute("INSERT OR IGNORE INTO count_reviews(document, item_code, warehouse, variance, approval_id, reviewed_at) VALUES (?,?,?,?,?,?)",
-                                        (d["document"], l["item_code"], l["warehouse"], l["variance"], record.id, now))
+                    self.app.stock_stores.counts.add_review(d["document"], l["item_code"], l["warehouse"], l["variance"], record.id, now)
             self.app.approvals.deliver(record)
             sent += 1
         return {"sent": sent, "lines": v["lines"]}
