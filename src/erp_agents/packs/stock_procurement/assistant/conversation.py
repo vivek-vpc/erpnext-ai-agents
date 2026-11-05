@@ -15,9 +15,9 @@ from __future__ import annotations
 import logging
 import re
 import time
-from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
+
+from ai_munimji_engine.runtime import Awaiting, ConversationMemory, InlineJobRunner, InProcessConversationMemory, ItemContext, JobRunner, PoolJobRunner
 
 from erp_agents.core.approvals.channels.base import Channel
 from erp_agents.core.approvals.models import DecisionResult, InboundEvent, Recipient
@@ -46,39 +46,22 @@ def parse_qty(text: str) -> Optional[float]:
         return None
 
 
-@dataclass
-class _Awaiting:
-    approval_id: str
-    action: str
-    choices: list[dict[str, str]]
-    until: float
-
-
-@dataclass
-class _Context:
-    items: list[str] = field(default_factory=list)
-    until: float = 0.0
-
-
 class Conversation:
     def __init__(self, approvals: Any, assistant: Any, chat: Any, router: ApprovalRouter, synchronous: bool = False,
-                 clock: Callable[[], float] = time.monotonic, limits: Optional[Limits] = None) -> None:
+                 clock: Callable[[], float] = time.monotonic, limits: Optional[Limits] = None, memory: Optional[ConversationMemory] = None,
+                 jobs: Optional[JobRunner] = None) -> None:
         self.approvals, self.assistant, self.chat, self.router, self.clock = approvals, assistant, chat, router, clock
         self.limits = limits or getattr(chat, "limits", None) or Limits(ResilienceSettings())       # one set of limits for the whole application
-        self._pool = None if synchronous else ThreadPoolExecutor(max_workers=2, thread_name_prefix="conversation")
-        self._awaiting: dict[tuple[str, str], _Awaiting] = {}
-        self._context: dict[tuple[str, str], _Context] = {}
+        self.memory = memory or InProcessConversationMemory()               # what a person was just asked, and what their last answer was about
+        self.jobs = jobs or (InlineJobRunner() if synchronous else PoolJobRunner(workers=2, prefix="conversation"))      # a slow model answers in a worker, not in the webhook
 
     # ------------------------------------------------------------------ entry points
     def expect(self, channel: str, sender: str, approval_id: str, action: str, choices: Optional[list[dict[str, str]]] = None) -> None:
         """The bot has just asked this person something about a request: their next message is probably the answer."""
-        self._awaiting[(channel, sender)] = _Awaiting(approval_id, action, list(choices or []), self.clock() + WAIT_SECONDS)
+        self.memory.expect(channel, sender, Awaiting(approval_id, action, list(choices or []), self.clock() + WAIT_SECONDS))
 
     def submit(self, event: InboundEvent, recipient: Recipient, channel: Channel) -> None:
-        if self._pool is None:
-            self._safe(event, recipient, channel)
-        else:
-            self._pool.submit(self._safe, event, recipient, channel)
+        self.jobs.submit(self._safe, event, recipient, channel, name="conversation")
 
     def _safe(self, event: InboundEvent, recipient: Recipient, channel: Channel) -> None:
         try:
@@ -99,7 +82,7 @@ class Conversation:
         key = (event.channel, event.sender)
         reply = lambda t: channel.send_text(event.sender, t)       # noqa: E731
 
-        waiting = self._awaiting.pop(key, None)
+        waiting = self.memory.take_awaiting(*key)
         if waiting and waiting.until >= self.clock():
             if text.lower() in CANCEL_WORDS:
                 reply("Okay, nothing was changed.")
@@ -120,7 +103,7 @@ class Conversation:
             self._chat(text, actor, key, reply, resend=resend)
 
     # ------------------------------------------------------------------ 1. the answer to the bot's own question
-    def _answer_prompt(self, waiting: _Awaiting, text: str, actor: Any, event: InboundEvent, reply: Callable[[str], Any]) -> bool:
+    def _answer_prompt(self, waiting: Awaiting, text: str, actor: Any, event: InboundEvent, reply: Callable[[str], Any]) -> bool:
         if waiting.action == "change_qty":
             qty = parse_qty(text)
             if qty is None:
@@ -201,7 +184,7 @@ class Conversation:
     # ------------------------------------------------------------------ 3. a question about stock, vendors, orders, what is waiting
     def _chat(self, text: str, actor: Any, key: tuple[str, str], reply: Callable[[str], Any], preface: str = "", items: Optional[list[str]] = None,
               resend: Optional[Callable[[str], Any]] = None) -> None:
-        ctx = self._context.get(key)
+        ctx = self.memory.recall_items(*key)
         context = {"items": items} if items else ({"items": ctx.items} if ctx and ctx.until >= self.clock() and ctx.items else None)
         try:
             out = self.chat.ask(text, actor.id, True, context)
@@ -212,7 +195,7 @@ class Conversation:
             reply(str(exc))
             return
         if out.get("items"):
-            self._context[key] = _Context(list(out["items"]), self.clock() + CONTEXT_SECONDS)
+            self.memory.remember_items(*key, ItemContext(list(out["items"]), self.clock() + CONTEXT_SECONDS))
         reply((preface + "\n\n" if preface else "") + render(out))
         exp = out.get("expect")
         if exp:                                                      # the answer asked something (cancel this order? yes / no): the next message is the reply

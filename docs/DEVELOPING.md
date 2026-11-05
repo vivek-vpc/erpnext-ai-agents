@@ -137,12 +137,13 @@ import `sqlite3`, and 19 groups of tables, most with their SQL inside a service 
 What still touches SQLite directly is about SQLite itself: `core/storage.py` (the schema and its migrations), `core/ops.py` (backup, restore, verify), `core/doctor.py` (reads the file read-only) and the
 `Sqlite*Store` classes. The list is closed and tested.
 
-Threads and in-memory state (rules 2 and 3): the conversation worker pool and its "waiting for an answer" memory
-(`packs/stock_procurement/assistant/conversation.py`), the sign-in sessions (`core/auth/sessions.py`), the storage lock (`core/storage.py`) and the scheduler. In a multi-worker Frappe site
-these must live in the cache or the database, and the conversation's follow-up work becomes a queued job. (The chat throttle and the per-chat message limit, once two private deques, are since Phase 3 one `Limits` in `core/resilience.py` behind a `RateLimiter` interface, and the circuit breakers keep their state in a `BreakerStore`: a cache can replace either; see [RESILIENCE.md](RESILIENCE.md).)
-`core/agents/service.py` adds to that list: one agent task runs at a time behind a lock, and `submit` / `on_submitted` start a background thread so a web request or a
-new approval never waits minutes for a model. Each of those becomes a `frappe.enqueue` job (the task row already exists before the work starts, so polling by task
-id carries over unchanged). The tools, the runtime and the checks have no threads of their own.
+Threads and in-memory state (rules 2 and 3). **Behind interfaces since Phase 2 of the Frappe work** (`ai_munimji_engine/runtime.py`, built into the application as `app.runtime`): background work is a
+`JobRunner` (`ThreadJobRunner` for an agent task and the second opinion, `PoolJobRunner` for the conversation's two workers, `InlineJobRunner` for tests and for a caller that is itself a job); the
+one-agent-at-a-time lock is an `Exclusive`; what a person was just asked in the chat and which items their last answer was about are a `ConversationMemory`. A Frappe site gives them `frappe.enqueue`,
+a lock in the database or cache, and the cache (the task row already exists before the work starts, so polling by task id carries over unchanged). `tests/test_runtime.py` fails if any module other
+than the runtime and the scheduler starts a thread. What is left, and stays with the standalone service: the sign-in sessions (`core/auth/sessions.py`: a Frappe site has its own), the SQLite lock
+(`core/storage.py`) and the scheduler with its Telegram poller (a site has the scheduler of Frappe and webhooks). (The chat throttle and the per-chat message limit, once two private deques, are
+since Phase 3 one `Limits` in `core/resilience.py` behind a `RateLimiter` interface, and the circuit breakers keep their state in a `BreakerStore`: a cache can replace either; see [RESILIENCE.md](RESILIENCE.md).)
 
 HTTP libraries (rule 2) are confined to the edges: `core/erp/erpnext.py`, `core/auth/erpnext.py`, the Telegram and WhatsApp channels and `core/assistant/llm.py`. `fastapi` is
 imported only by `core/api/app.py`, `apscheduler` only by `core/scheduler.py`, and the environment is read only by `core/config.py`: those rules hold.

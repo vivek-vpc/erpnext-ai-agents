@@ -388,7 +388,7 @@ def test_a_slow_answer_does_not_block_the_next_message(make_app, clock):
     rec = propose(app)                                                                           # meanwhile a request arrives and a button works at once
     assert press(app, rec.id, "dismiss").status == "decided"
     release.set()
-    app.conversation._pool.shutdown(wait=True)
+    app.conversation.jobs.shutdown(wait=True)
     assert "300" in texts(http)[-1]
 
 

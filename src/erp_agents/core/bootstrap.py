@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
+from ai_munimji_engine.runtime import Runtime, thread_runtime
 from ai_munimji_engine.stores import CoreStores
 
 from . import metrics, obs, resilience, tracing
@@ -71,6 +72,7 @@ class App:
     scheduler: Optional[Any] = None                 # the running scheduler, set by `serve` (None in a process that only reads or answers one command): /ready looks at it
     resilience: Optional[Any] = None                # the `resilience:` section (resilience.py ResilienceSettings): breaker limits, rate limits, how long channel message ids are kept
     limits: Optional[Any] = None                    # the per-person rate limits (resilience.py Limits); one set for the whole application
+    runtime: Optional[Any] = None                   # background work, the one-at-a-time lock and the chat memory (the engine's runtime.py): threads and dictionaries here, a queue and a cache on a Frappe site
 
     @property
     def db(self) -> Any:
@@ -111,6 +113,7 @@ def build_app(
     db_path: Optional[str] = None,
     login: Optional[ErpNextLogin] = None,
     stores: Optional[CoreStores] = None,
+    runtime: Optional[Runtime] = None,
 ) -> App:
     cfg = config if config is not None else load_config(config_path)
     problem = demo_key_problem(cfg)             # before anything is created or opened
@@ -179,6 +182,7 @@ def build_app(
     app = App(cfg, stores, settings, erp, channels, router, approvals, workorders, tokens, clock, packs,
               login=login, sessions=sessions, throttle=LoginThrottle() if login else None, observability=observability)
     app.resilience, app.limits = resilience_settings, resilience.Limits(resilience_settings)
+    app.runtime = runtime or thread_runtime()
     approvals.inbound.memory_days = resilience_settings.inbound_memory_days
     app.agent_log = AgentLog(stores.agents, clock)
     app.job_log = JobLog(stores.jobs, clock)

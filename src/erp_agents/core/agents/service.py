@@ -9,15 +9,14 @@ With the agents switched off nothing is sent to any model; the brief and the ord
 from __future__ import annotations
 
 import asyncio
-import contextvars
 import logging
 import socket
-import threading
 from dataclasses import dataclass, replace
 from datetime import timedelta
 from typing import Any, Callable, Optional
 from zoneinfo import ZoneInfo
 
+from ai_munimji_engine.runtime import thread_runtime
 from pydantic import ValidationError
 
 from .. import metrics, obs, tracing
@@ -76,7 +75,8 @@ class AgentService:
     def __init__(self, app: Any, client_factory: Optional[Callable[[Any], ToolChatClient]] = None) -> None:
         self.app = app
         self.client_factory = client_factory or (lambda cfg: make_client(cfg, self._keys()))
-        self._lock = threading.Lock()
+        self.runtime = getattr(app, "runtime", None) or thread_runtime()
+        self._lock = self.runtime.exclusive()           # one task at a time: a laptop has one model
         self._providers: list[Any] = []                 # what the packs add: their tasks (brief, review, ask ...), see add_tasks()
         self._last_tasks: list[str] = []                # "agent:task" pairs whose latest run status() shows
         self.resolve: Callable[..., list] = socket.getaddrinfo          # how check() looks up a host name (tests replace it: no network needed)
@@ -181,8 +181,8 @@ class AgentService:
     def submit(self, plan: Plan) -> str:
         """Start the plan in the background; the caller polls `task(id)`."""
         task_id = self._start(plan)
-        context = contextvars.copy_context()                # a new thread starts with an empty context; the task binds its own id, and whatever else is bound (a request id) is kept
-        threading.Thread(target=context.run, args=(self._complete, task_id, plan, 1800), name=f"agent-{plan.job.agent}-{plan.job.task}", daemon=True).start()
+        # the runner carries what the caller has bound for its log lines (a request id) to the work; the task binds its own id
+        self.runtime.jobs.submit(self._complete, task_id, plan, 1800, name=f"agent-{plan.job.agent}-{plan.job.task}")
         return task_id
 
     def task(self, task_id: str) -> Optional[dict[str, Any]]:

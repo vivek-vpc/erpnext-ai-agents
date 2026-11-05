@@ -67,7 +67,8 @@ class StockProcurementPack(Pack):
         if "whatsapp" in app.channels and hash_key_state() != "ok":
             log.warning("%s is %s: a vendor's WhatsApp reply cannot be recognised until you put a long random value (32+ characters) in .env (see .env.example).",
                         HASH_KEY_ENV, "not set" if hash_key_state() == "missing" else "shorter than 32 characters")
-        app.conversation = Conversation(app.approvals, assistant, chat, app.router, synchronous=bool((cfg.get("conversation") or {}).get("synchronous")), limits=app.limits)
+        app.conversation = Conversation(app.approvals, assistant, chat, app.router, synchronous=bool((cfg.get("conversation") or {}).get("synchronous")), limits=app.limits,
+                                       memory=app.runtime.memory)
 
         app.approvals.no_reminder_kinds.update(NO_REMINDER_KINDS)
         for channel in app.channels.values():
