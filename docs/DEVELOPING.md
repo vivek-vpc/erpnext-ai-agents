@@ -7,15 +7,15 @@ the core and the edges are today, the rules for new code, and an audit of where 
 ## What the Marketplace requires (docs.frappe.io, checked 21 Oct 2026)
 
 - The app is open source (MIT or a GPL-compatible licence), hosted on GitHub, and published by its owner. The name must be unique across the Marketplace.
-- It supports the **current stable Frappe and ERPNext** version (v16 at the time of writing; v16 needs Python 3.14 according to community reports, so check the
-  official requirements before each release). Version-specific code branches on `frappe.__version__`.
+- It supports the **current stable Frappe and ERPNext** version (Frappe Cloud lists Versions 15 and 16 as Stable, 15 the default for new bench groups; v16 needs Python exactly 3.14,
+  read from Frappe's own files on 5 Nov 2026 ([FRAPPE_FACTS.md](FRAPPE_FACTS.md) 2); check again before each release). Version-specific code branches on `frappe.__version__`.
 - A **passing GitHub Actions (or similar) CI is mandatory.** Frappe recommends running Semgrep with its `frappe/semgrep-rules` locally.
 - **Do not override base Frappe functionality** (login and password-reset pages and the like): extend it through hooks.
-- The app has a settings DocType for its global behaviour.
+- A settings DocType for its global behaviour is recommended, not required ([FRAPPE_FACTS.md](FRAPPE_FACTS.md) 3, row 8).
 - Listing: short description of 40 to 80 characters (one sentence, not repeating the name), a long description without installation steps, a **square logo of at
-  least 200x200 px without text**, one category, a **support URL**, a **privacy policy URL**, and a short demo video for the reviewers. The app must not steer
-  users away from Frappe Cloud.
-- The privacy policy has to say exactly what leaves the site: request summaries to WhatsApp and Telegram, and question text to a language model when the
+  least 200x200 px without text**, one category, five links (**Website, Support, Documentation, Terms of Service, Privacy Policy**), screenshots, and a demo
+  video that is prepared and sent on request. The app must not steer users away from Frappe Cloud.
+- This project's own rule (it is not on the Marketplace pages): the privacy policy has to say exactly what leaves the site: request summaries to WhatsApp and Telegram, and question text to a language model when the
   assistant is on. For the AI agents and the MCP server that statement is generated from code and tested (`core/agents/privacy.py`, `src/erp_agents/packs/stock_procurement/tests/test_privacy.py`); the
   draft policy to adapt is at the end of [PRIVACY.md](PRIVACY.md). The agent features are off by default, and a model on another machine is refused unless the
   owner allows it, which is what lets the policy say "nothing leaves your site unless you turn it on".

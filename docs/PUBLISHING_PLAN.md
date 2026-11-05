@@ -96,7 +96,7 @@ channel-neutral approvals, plain-maths analysis) makes the port mostly a swap of
 |---|---|
 | `core/erp/erpnext.py` (REST + API key) | `FrappeERPClient` using `frappe.get_all` / `frappe.get_doc` in-process. No API key, faster, permission-checked. |
 | SQLite (`storage.py`) | DocTypes: Agent Settings (Single), Inventory Alert, Approval Request, Purchase Proposal, Work Order, Settings Audit. |
-| APScheduler | `hooks.py` `scheduler_events` (cron) and `frappe.enqueue` for the 3-minute procurement pass. |
+| APScheduler | `hooks.py` `scheduler_events` (cron) and `frappe.enqueue` for the procurement pass (every 4 minutes at best: the scheduler tick, measured on a bench on 5 Nov 2026). |
 | `/webhooks/whatsapp` (FastAPI) | A whitelisted guest method, `/api/method/erp_agents.webhooks.whatsapp`, with the same signature check. Frappe Cloud already gives you public HTTPS, which removes the tunnel step. |
 | Tokens in `.env` | `Password` fields in Agent Settings. |
 | `packs/stock_procurement/web/index.html` console | Desk workspace plus list/form views; the approval inbox as a Desk page. |
@@ -118,7 +118,7 @@ shared library. Two repos or one monorepo with `erp_agents_core/` and `erp_agent
 
 - Frappe Cloud account, then Settings > Profile > **Become a Publisher**.
 - Marketplace tab > **+ Add App** > **Add from GitHub** > pick the Frappe version > **Add to Marketplace** (starts as Draft).
-- Listing: unique app name; title; one-sentence short description (40-80 characters); long description without installation steps; **square logo at least 200x200 px, no text**; one category; **support URL**; **privacy policy URL**; a **short demo video**.
+- Listing: unique app name; title; one-sentence short description (40-80 characters); long description without installation steps; **square logo at least 200x200 px, no text**; one category; five links (**Website, Support, Documentation, Terms of Service, Privacy Policy**); screenshots; a demo video that is prepared and sent on request.
 - Must support the current stable Frappe/ERPNext version and must not steer users away from Frappe Cloud.
 - Publish a release; the Frappe team reviews the app and each release (stated review time: 10 days).
 
