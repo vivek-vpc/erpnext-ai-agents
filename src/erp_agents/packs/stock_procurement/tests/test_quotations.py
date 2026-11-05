@@ -9,7 +9,7 @@ from conftest import OWNER
 from erp_agents.core.api.app import create_app
 from erp_agents.packs.stock_procurement.settings import ProcurementSettings
 from erp_agents.core.workorders import REORDER_NEEDED
-from erp_agents.core.erp.base import QuoteRule, VendorOffer
+from ai_munimji_engine.packs.stock_procurement.erp import QuoteRule, VendorOffer
 from erp_agents.core.erp.erpnext import ERPNextClient
 from erp_agents.core.erp.mock import MockERP
 from erp_agents.packs.stock_procurement.procurement.scoring import Need, rank_vendors
@@ -330,7 +330,7 @@ class PostSession:
 
 
 def draft_with(quotation="SQ-1"):
-    from erp_agents.core.erp.base import PurchaseOrderDraft
+    from ai_munimji_engine.packs.stock_procurement.erp import PurchaseOrderDraft
     return PurchaseOrderDraft("S-A", "BOLT", 500, 9.30, "Nos", date(2026, 10, 30), supplier_quotation=quotation)
 
 
@@ -365,7 +365,7 @@ def test_an_unreadable_quotation_does_not_stop_the_order():
 
 
 def test_no_quotation_means_no_link_at_all():
-    from erp_agents.core.erp.base import PurchaseOrderDraft
+    from ai_munimji_engine.packs.stock_procurement.erp import PurchaseOrderDraft
     item = post_order({"Supplier Quotation/SQ-1": GOOD_SQ}, PurchaseOrderDraft("S-A", "BOLT", 500, 9.30, "Nos", date(2026, 10, 30)))
     assert "supplier_quotation" not in item and item["rate"] == 9.30
 

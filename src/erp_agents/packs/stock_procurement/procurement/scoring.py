@@ -17,7 +17,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Optional
 
 from ..settings import ProcurementSettings
-from erp_agents.core.erp.base import TaxSetup, VendorOffer
+from ai_munimji_engine.packs.stock_procurement.erp import TaxSetup, VendorOffer
 from . import taxes
 
 LISTED_BONUS = 3.0

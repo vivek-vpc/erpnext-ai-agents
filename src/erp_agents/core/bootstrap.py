@@ -24,7 +24,7 @@ from .auth.erpnext import ErpNextLogin
 from .auth.sessions import LoginThrottle, SessionStore
 from .common import Actor, Clock, utcnow
 from .config import load_config
-from .erp.base import ERPClient
+from ai_munimji_engine.core.erp.base import ERPClient
 from .erp.erpnext import ERPNextClient
 from .erp.mock import MockERP
 from .packs import PackError, PackRegistry

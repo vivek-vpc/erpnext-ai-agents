@@ -217,7 +217,7 @@ class PostSession(FakeSession):
 
 
 def test_purchase_order_is_created_as_an_unsubmitted_draft():
-    from erp_agents.core.erp.base import PurchaseOrderDraft
+    from ai_munimji_engine.packs.stock_procurement.erp import PurchaseOrderDraft
     session = PostSession({}, Resp({"data": {"name": "PO-00042"}}))
     c = ERPNextClient("http://erp.local/", "K", "S", session=session, company="Demo Co")
     res = c.create_purchase_order(PurchaseOrderDraft("S-A", "BOLT", 500, 10.5, "Nos", date(2026, 10, 25), "check me"))
@@ -230,7 +230,7 @@ def test_purchase_order_is_created_as_an_unsubmitted_draft():
 
 
 def test_a_refusal_from_erpnext_is_reported_in_its_own_readable_words():
-    from erp_agents.core.erp.base import PurchaseOrderDraft
+    from ai_munimji_engine.packs.stock_procurement.erp import PurchaseOrderDraft
     msg = "Item BOLT: Ordered qty 1 cannot be less than minimum order qty 2 (defined in Item)."
     body = {"exception": "frappe.exceptions.ValidationError: " + msg, "_server_messages": json.dumps([json.dumps({"message": msg})])}
     res = ERPNextClient("http://erp.local", "K", "S", session=PostSession({}, Resp(body, 417))).create_purchase_order(PurchaseOrderDraft("S-A", "BOLT", 1, 1, "Nos", date(2026, 10, 25)))
@@ -238,7 +238,7 @@ def test_a_refusal_from_erpnext_is_reported_in_its_own_readable_words():
 
 
 def test_purchase_order_refusals_are_reported_not_raised():
-    from erp_agents.core.erp.base import PurchaseOrderDraft
+    from ai_munimji_engine.packs.stock_procurement.erp import PurchaseOrderDraft
     draft = PurchaseOrderDraft("S-A", "BOLT", 5, 1, "Nos", date(2026, 10, 25))
     refused = ERPNextClient("http://erp.local", "K", "S", session=PostSession({}, Resp({"exc": "PermissionError"}, 403))).create_purchase_order(draft)
     assert not refused.ok and "HTTP 403" in refused.error
@@ -302,7 +302,7 @@ def test_vendor_prices_are_compared_in_company_currency_not_each_vendors_own():
 
 
 def test_the_order_for_a_foreign_supplier_is_raised_in_that_suppliers_currency():
-    from erp_agents.core.erp.base import PurchaseOrderDraft
+    from ai_munimji_engine.packs.stock_procurement.erp import PurchaseOrderDraft
     tables = {"Company/Demo Co": {"default_currency": "INR"}, "Supplier/SAIGON": {"default_currency": "USD"},
               "Currency Exchange": [{"exchange_rate": 88.0, "date": "2026-10-16"}]}
     session = PostSession(tables, Resp({"data": {"name": "PO-7"}}))
@@ -357,7 +357,7 @@ def po_client(session):
 
 
 def test_a_retry_after_a_lost_answer_reuses_the_order_instead_of_creating_a_second():
-    from erp_agents.core.erp.base import PurchaseOrderDraft
+    from ai_munimji_engine.packs.stock_procurement.erp import PurchaseOrderDraft
     s = OrderSession(lose_first_answer=True)
     draft = PurchaseOrderDraft("S-A", "BOLT", 100, 10.0, "Nos", date(2026, 11, 1), reference="prop123")
     first = po_client(s).create_purchase_order(draft)
@@ -368,7 +368,7 @@ def test_a_retry_after_a_lost_answer_reuses_the_order_instead_of_creating_a_seco
 
 
 def test_a_different_proposal_gets_its_own_order():
-    from erp_agents.core.erp.base import PurchaseOrderDraft
+    from ai_munimji_engine.packs.stock_procurement.erp import PurchaseOrderDraft
     s = OrderSession()
     c = po_client(s)
     a = c.create_purchase_order(PurchaseOrderDraft("S-A", "BOLT", 1, 1, "Nos", date(2026, 11, 1), reference="p1"))
@@ -377,7 +377,7 @@ def test_a_different_proposal_gets_its_own_order():
 
 
 def test_without_the_erpnext_field_the_order_is_refused_with_the_fix_not_created_blindly():
-    from erp_agents.core.erp.base import PurchaseOrderDraft
+    from ai_munimji_engine.packs.stock_procurement.erp import PurchaseOrderDraft
     s = OrderSession(field_exists=False)
     res = po_client(s).create_purchase_order(PurchaseOrderDraft("S-A", "BOLT", 1, 1, "Nos", date(2026, 11, 1), reference="p1"))
     assert not res.ok and "erp-agents erp-setup" in res.error and s.orders == []
@@ -397,14 +397,14 @@ def test_erp_setup_creates_the_fields_on_every_document_once():
 
 
 def test_the_order_records_who_approved_it_because_erpnext_only_sees_the_service_account():
-    from erp_agents.core.erp.base import PurchaseOrderDraft
+    from ai_munimji_engine.packs.stock_procurement.erp import PurchaseOrderDraft
     s = OrderSession()
     res = po_client(s).create_purchase_order(PurchaseOrderDraft("S-A", "BOLT", 5, 1, "Nos", date(2026, 11, 1), reference="p1", approved_by="priya@acme.com via app"))
     assert res.ok and s.orders[0]["custom_agent_approved_by"] == "priya@acme.com via app" and s.orders[0]["custom_agent_ref"] == "p1"
 
 
 def test_a_cancelled_order_does_not_block_a_new_one_but_the_filter_excludes_it():
-    from erp_agents.core.erp.base import PurchaseOrderDraft
+    from ai_munimji_engine.packs.stock_procurement.erp import PurchaseOrderDraft
     s = OrderSession()
     po_client(s).create_purchase_order(PurchaseOrderDraft("S-A", "BOLT", 1, 1, "Nos", date(2026, 11, 1), reference="p1"))
     flt = []
@@ -475,7 +475,7 @@ def test_usage_of_a_migrated_item_is_measured_over_its_real_history_not_its_crea
     from datetime import timedelta
 
     from erp_agents.packs.stock_procurement.settings import Policy
-    from erp_agents.core.erp.base import DailyUsage, ItemInfo
+    from ai_munimji_engine.packs.stock_procurement.erp import DailyUsage, ItemInfo
     from erp_agents.packs.stock_procurement.inventory.analysis import compute_usage
     today = date(2026, 10, 20)
     sales = [DailyUsage(today - timedelta(days=d), 10.0) for d in range(3, 80)]            # 10 a day for the last 80 days, none in the last 3
@@ -528,7 +528,7 @@ def test_a_warehouse_filter_still_applies_and_the_warehouse_is_read_with_every_b
 
 # ------------------------------------------------------------------ which company a new document goes to
 def _draft():
-    from erp_agents.core.erp.base import PurchaseOrderDraft
+    from ai_munimji_engine.packs.stock_procurement.erp import PurchaseOrderDraft
     return PurchaseOrderDraft("S-A", "BOLT", 5, 10.0, "Nos", date(2026, 10, 25))
 
 
@@ -540,7 +540,7 @@ def test_with_several_companies_and_none_configured_nothing_is_created():
 
 
 def test_the_configured_company_is_used_for_orders_and_requisitions():
-    from erp_agents.core.erp.base import RequisitionDraft
+    from ai_munimji_engine.packs.stock_procurement.erp import RequisitionDraft
     session = PostSession({"Company": [{"name": "A"}, {"name": "B"}]}, Resp({"data": {"name": "X-1"}}))
     c = ERPNextClient("http://erp.local", "K", "S", session=session, company="B")
     assert c.create_purchase_order(_draft()).ok
@@ -573,7 +573,7 @@ def _taxed_world(**extra):
 
 
 def _taxed_draft(template="Domestic - X"):
-    from erp_agents.core.erp.base import PurchaseOrderDraft
+    from ai_munimji_engine.packs.stock_procurement.erp import PurchaseOrderDraft
     return PurchaseOrderDraft("S-A", "BOLT", 5, 10.0, "Nos", date(2026, 10, 25), taxes_template=template)
 
 

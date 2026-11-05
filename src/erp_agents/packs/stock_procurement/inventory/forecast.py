@@ -18,7 +18,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import date, timedelta
 from typing import Any, Optional, Sequence
 
-from erp_agents.core.erp.base import DailyUsage, SalesDue
+from ai_munimji_engine.packs.stock_procurement.erp import DailyUsage, SalesDue
 from ..settings import Policy
 from .events import Window, total_demand
 

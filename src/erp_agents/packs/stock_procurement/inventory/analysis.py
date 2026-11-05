@@ -19,7 +19,7 @@ from datetime import date, timedelta
 from typing import Any, Optional, Sequence
 
 from ..settings import Policy
-from erp_agents.core.erp.base import IN_TRANSIT_COLUMN, IN_TRANSIT_LABEL, STOCK_COLUMNS, DailyUsage, ItemInfo, SalesDue, StockInfo, column_phrase, stock_column
+from ai_munimji_engine.packs.stock_procurement.erp import IN_TRANSIT_COLUMN, IN_TRANSIT_LABEL, STOCK_COLUMNS, DailyUsage, ItemInfo, SalesDue, StockInfo, column_phrase, stock_column
 from .events import Window, days_until_demand, describe, total_demand
 from .forecast import forecast_reorder_point
 

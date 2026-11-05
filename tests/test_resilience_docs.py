@@ -103,11 +103,12 @@ def test_the_frappe_table_names_modules_and_functions_that_exist():
         for module in re.findall(r"`(core/[a-z_/]+\.py)`", row[1]):
             assert (SRC / module).is_file(), module
     wanted = {"core/resilience.py": ["class CircuitBreaker", "class RateLimiter", "class Limits", "class BreakerStore"], "core/httpguard.py": ["def guard_session"],
-              "core/approvals/inbound_ledger.py": ["def claim"], "core/approvals/service.py": ["def reconcile_pending", "reconcile: Optional"], "core/erp/base.py": ["def find_by_reference"]}
+              "core/approvals/inbound_ledger.py": ["def claim"], "core/approvals/service.py": ["def reconcile_pending", "reconcile: Optional"]}
     for path, needles in wanted.items():
         code = (SRC / path).read_text(encoding="utf-8")
         for needle in needles:
             assert needle in code, (path, needle)
+    assert "def find_by_reference" in (ROOT / "engine/src/ai_munimji_engine/core/erp/base.py").read_text(encoding="utf-8")
     for name in ("ApprovalService.reconcile_pending", "KindHandler.reconcile", "find_by_reference", "RateLimiter", "Limits"):
         assert name in TEXT
 

@@ -13,7 +13,7 @@ from erp_agents.core import acting
 from erp_agents.core.acting import ActingAs
 from erp_agents.packs.stock_procurement.settings import ProcurementSettings
 from erp_agents.core.workorders import REORDER_NEEDED
-from erp_agents.core.erp.base import PurchaseOrderDraft, RequisitionDraft
+from ai_munimji_engine.packs.stock_procurement.erp import PurchaseOrderDraft, RequisitionDraft
 from erp_agents.core.erp.erpnext import ERPNextClient
 from erp_agents.core.erp.mock import MockERP
 from erp_agents.packs.stock_procurement.procurement.messages import KIND_PO, KIND_PR, route_for

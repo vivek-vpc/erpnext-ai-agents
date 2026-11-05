@@ -8,7 +8,7 @@ from conftest import APPROVER, OWNER
 from erp_agents.core.api.app import create_app
 from erp_agents.packs.stock_procurement.settings import ProcurementSettings
 from erp_agents.core.workorders import REORDER_NEEDED
-from erp_agents.core.erp.base import VendorOffer
+from ai_munimji_engine.packs.stock_procurement.erp import VendorOffer
 from erp_agents.core.erp.mock import MockERP
 from erp_agents.packs.stock_procurement.procurement.scoring import Need, rank_vendors
 

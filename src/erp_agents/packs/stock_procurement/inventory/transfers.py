@@ -17,7 +17,7 @@ from erp_agents.core import acting
 from erp_agents.core.approvals.models import ApprovalRecord, Decision, DecisionRefused
 from erp_agents.core.approvals.service import KindHandler, parse_approver
 from erp_agents.core.common import iso, short_id, untrusted
-from erp_agents.core.erp.base import StockTransferDraft
+from ai_munimji_engine.packs.stock_procurement.erp import StockTransferDraft
 from .analysis import _n, where_stock_is
 from .messages import KIND_TRANSFER, build_transfer_request
 

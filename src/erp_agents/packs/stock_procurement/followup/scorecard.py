@@ -19,7 +19,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import date
 from typing import Any, Optional, Sequence
 
-from erp_agents.core.erp.base import ReceiptLine
+from ai_munimji_engine.packs.stock_procurement.erp import ReceiptLine
 from ..inventory.analysis import _n
 
 MIN_LINES = 2

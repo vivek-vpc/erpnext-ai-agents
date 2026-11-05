@@ -10,7 +10,7 @@ from erp_agents.core.agents.llm import AnthropicToolClient, OllamaToolClient
 from erp_agents.core.api.app import create_app
 from erp_agents.core.assistant.llm import LLMError as AssistantLLMError, OllamaClient
 from erp_agents.core.auth.erpnext import ErpNextLogin, LoginError
-from erp_agents.core.erp.base import PurchaseOrderDraft
+from ai_munimji_engine.packs.stock_procurement.erp import PurchaseOrderDraft
 from erp_agents.core.erp.erpnext import ERPNextClient
 from erp_agents.core.httpguard import CircuitOpen
 from test_resilience_guard import Net, Time

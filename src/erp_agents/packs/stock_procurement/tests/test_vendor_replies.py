@@ -18,7 +18,7 @@ from erp_agents.core.approvals.channels.whatsapp import WhatsAppChannel
 from erp_agents.core.approvals.inbound import process_inbound
 from erp_agents.core.approvals.models import InboundEvent
 from erp_agents.core.common import iso
-from erp_agents.core.erp.base import SupplierContact
+from ai_munimji_engine.packs.stock_procurement.erp import SupplierContact
 from erp_agents.packs.stock_procurement.settings import FollowUpSettings
 from test_followup import APPROVER_NUMBER, NUMBER, erp, late_order, pending, texts_to, wa_app  # noqa: F401  (the follow-up tests' fixtures and helpers)
 from conftest import table_rows, put_row

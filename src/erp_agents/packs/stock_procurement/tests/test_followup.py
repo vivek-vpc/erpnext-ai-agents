@@ -14,7 +14,7 @@ from conftest import OWNER, VIEWER, FakeHTTP
 from erp_agents.core.approvals.channels.whatsapp import WhatsAppChannel
 from erp_agents.core.approvals.inbound import process_inbound
 from erp_agents.core.approvals.models import InboundEvent
-from erp_agents.core.erp.base import CountLine, ReceiptLine, SupplierContact
+from ai_munimji_engine.packs.stock_procurement.erp import CountLine, ReceiptLine, SupplierContact
 from erp_agents.core.erp.mock import MockERP
 from conftest import table_rows
 

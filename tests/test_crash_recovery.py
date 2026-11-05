@@ -332,7 +332,8 @@ def test_an_answer_the_kind_refuses_leaves_the_request_waiting_and_says_why(make
 
 
 def test_both_erp_implementations_find_a_document_by_its_reference_with_its_approver(clock):
-    from erp_agents.core.erp.base import FoundDocument, PurchaseOrderDraft
+    from ai_munimji_engine.packs.stock_procurement.erp import PurchaseOrderDraft
+    from ai_munimji_engine.core.erp.base import FoundDocument
     from erp_agents.core.erp.mock import MockERP
     from fake_erpnext import rest_client
     due = clock().date()

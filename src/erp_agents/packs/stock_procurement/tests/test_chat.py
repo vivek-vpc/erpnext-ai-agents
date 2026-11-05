@@ -10,7 +10,7 @@ from conftest import APPROVER, OWNER, VIEWER
 from erp_agents.core.api.app import create_app
 from erp_agents.packs.stock_procurement.assistant.chat import ChatLimit, ChatService, parse_days, parse_qty, resolve_items, understand
 from erp_agents.core.assistant.verify import NOT_ENOUGH
-from erp_agents.core.erp.base import ItemInfo
+from ai_munimji_engine.packs.stock_procurement.erp import ItemInfo
 from erp_agents.core.erp.erpnext import ERPNextClient
 from erp_agents.core.erp.mock import MockERP
 from test_assistant import FakeLLM

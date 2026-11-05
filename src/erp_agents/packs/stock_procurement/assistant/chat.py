@@ -30,7 +30,7 @@ from erp_agents.core.resilience import Limits, RateLimited, ResilienceSettings
 from erp_agents.core.settings_store import SettingsStore
 from ai_munimji_engine.storage import dumps, loads
 from ai_munimji_engine.stores.stock.assistant import AssistantStore
-from erp_agents.core.erp.base import ERPClient, ItemInfo
+from ai_munimji_engine.packs.stock_procurement.erp import ItemInfo, StockProcurementERP
 from ..inventory.analysis import _d, _n, where_stock_is
 from erp_agents.core.assistant.facts import Fact
 from erp_agents.core.assistant.llm import LLMClient, LLMError, OllamaClient
@@ -417,7 +417,7 @@ def status_label(a: Any) -> tuple[str, str]:
 
 
 class ChatService:
-    def __init__(self, erp: ERPClient, inventory: Any, procurement: Any, proposals: Any, approvals: Any, settings: SettingsStore, store: AssistantStore,
+    def __init__(self, erp: StockProcurementERP, inventory: Any, procurement: Any, proposals: Any, approvals: Any, settings: SettingsStore, store: AssistantStore,
                  clock: Clock = utcnow, client_factory: Optional[Callable[[AssistantSettings], LLMClient]] = None,
                  limits: Optional[Limits] = None) -> None:
         self.erp, self.inventory, self.procurement, self.proposals, self.approvals = erp, inventory, procurement, proposals, approvals

@@ -2,7 +2,7 @@
 import json
 
 from erp_agents.core.acting import ActingAs
-from erp_agents.core.erp.base import StockTransferDraft
+from ai_munimji_engine.packs.stock_procurement.erp import StockTransferDraft
 from erp_agents.core.erp.erpnext import ERPNextClient
 
 

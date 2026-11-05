@@ -26,7 +26,7 @@ from erp_agents.core.common import Clock, iso, short_id, utcnow
 from ..settings import Policy
 from erp_agents.core.settings_store import SettingsError, SettingsStore
 from erp_agents.core.workorders import REORDER_NEEDED, WorkOrderQueue
-from erp_agents.core.erp.base import ERPClient, ItemInfo
+from ai_munimji_engine.packs.stock_procurement.erp import ItemInfo, StockProcurementERP
 from .alerts import Alert, AlertRepo
 from .events import Window, active_windows
 from .analysis import SEV_CRITICAL, SEV_NAMES, STATUS_BREACH, STATUS_EARLY, STATUS_OK, Analysis, _n, analyze_item
@@ -69,7 +69,7 @@ def _short_error(exc: Exception) -> str:
 class InventoryAgent:
     def __init__(
         self,
-        erp: ERPClient,
+        erp: StockProcurementERP,
         settings: SettingsStore,
         alerts: AlertRepo,
         approvals: ApprovalService,

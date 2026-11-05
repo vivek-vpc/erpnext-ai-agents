@@ -10,7 +10,7 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from erp_agents.core.erp.base import DEFAULT_IN_TRANSIT, DEFAULT_STOCK_ADD, DEFAULT_STOCK_SUBTRACT, IN_TRANSIT_COLUMN, IN_TRANSIT_LABEL, STOCK_COLUMNS
+from ai_munimji_engine.packs.stock_procurement.erp import DEFAULT_IN_TRANSIT, DEFAULT_STOCK_ADD, DEFAULT_STOCK_SUBTRACT, IN_TRANSIT_COLUMN, IN_TRANSIT_LABEL, STOCK_COLUMNS
 from erp_agents.core.policy import SystemSettings
 from .templating import TemplateError, check_template
 
@@ -44,7 +44,7 @@ class Policy(BaseModel):
         None, gt=0, description="Override replenishment lead time. Empty = use the ERP item's lead time, else default."
     )
     default_lead_time_days: float = Field(7, gt=0, description="Used when neither override nor ERP lead time exists.")
-    # ---- what counts as stock: the owner picks the ERP columns (see erp.base.STOCK_COLUMNS) and the warehouses
+    # ---- what counts as stock: the owner picks the ERP columns (see STOCK_COLUMNS in the pack's ERP port) and the warehouses
     stock_subtract: list[str] = Field(
         default_factory=lambda: list(DEFAULT_STOCK_SUBTRACT),
         description="ERP stock columns subtracted from on-hand stock to get AVAILABLE stock (e.g. reserved for sales orders). Empty = ignore reservations.",

@@ -21,9 +21,6 @@ class AgentRunStore(Protocol):
     def list(self, limit: int) -> list[Row]:
         """Every run, newest first."""
 
-    def latest_started(self) -> Optional[str]:
-        """When the newest run began (any agent, dry or not), or None."""
-
 
 class MemoryAgentRunStore:
     def __init__(self, db: MemoryDb) -> None:
@@ -55,7 +52,3 @@ class MemoryAgentRunStore:
     def list(self, limit: int) -> list[Row]:
         with self.db.lock:
             return [dict(r) for r in self._newest_first(self.db.rows("agent_runs"))[:limit]]
-
-    def latest_started(self) -> Optional[str]:
-        with self.db.lock:
-            return max((r["started_at"] for r in self.db.rows("agent_runs")), default=None)

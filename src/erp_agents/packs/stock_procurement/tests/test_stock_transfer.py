@@ -126,7 +126,7 @@ def test_a_retry_never_creates_a_second_draft(world):
     app, erp = world
     res = app.transfers.prepare("BOLT", 30, "Stores", "Shop floor", "anna")
     app.approvals.decide(res["approval_id"], "approve", OWNER, "app")
-    again = erp.create_stock_transfer(__import__("erp_agents.core.erp.base", fromlist=["StockTransferDraft"]).StockTransferDraft(
+    again = erp.create_stock_transfer(__import__("ai_munimji_engine.packs.stock_procurement.erp", fromlist=["StockTransferDraft"]).StockTransferDraft(
         "BOLT", 30, "pcs", "Stores", "Shop floor", reference=res["transfer"]))
     assert again.ok and again.name == erp.stock_transfers[0]["name"] and len(erp.stock_transfers) == 1
 
@@ -234,7 +234,7 @@ def test_the_warehouses_in_a_sentence_are_read_by_their_from_and_to_words(q, exp
 
 
 def test_the_plan_for_a_move_reads_the_quantity_and_the_warehouses():
-    from erp_agents.core.erp.base import ItemInfo
+    from ai_munimji_engine.packs.stock_procurement.erp import ItemInfo
     items = [ItemInfo("BOLT", "Bolt", "Fasteners", "pcs")]
     p = understand("Move 1,250 of BOLT from Shop floor to Main Warehouse", items, None, KNOWN)
     assert (p.intent, p.qty, p.from_warehouse, p.to_warehouse, [i.code for i in p.items]) == ("stock_transfer", 1250, "Shop floor", "Main Warehouse", ["BOLT"])

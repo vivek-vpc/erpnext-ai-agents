@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 
-from erp_agents.core.erp.base import TaxRow, TaxSetup
+from ai_munimji_engine.packs.stock_procurement.erp import TaxRow, TaxSetup
 
 COST_CATEGORIES = ("Valuation", "Valuation and Total")
 

@@ -6,7 +6,7 @@ from datetime import date
 import pytest
 
 from conftest import OWNER
-from erp_agents.core.erp.base import PurchaseOrderDraft, RequisitionDraft, StockTransferDraft
+from ai_munimji_engine.packs.stock_procurement.erp import PurchaseOrderDraft, RequisitionDraft, StockTransferDraft
 from erp_agents.core.workorders import REORDER_NEEDED
 from fake_erpnext import FakeERPNext, HybridERP, rest_client
 from test_procurement import three, wo_payload

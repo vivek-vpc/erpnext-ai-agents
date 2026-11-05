@@ -11,7 +11,7 @@ from erp_agents.core.assistant.facts import build_facts
 from erp_agents.packs.stock_procurement.settings import CalendarEvent, CalendarSettings, Policy, ProcurementSettings
 from erp_agents.core.settings_store import SettingsError
 from erp_agents.core.workorders import REORDER_NEEDED
-from erp_agents.core.erp.base import PurchaseOrderDraft, VendorOffer
+from ai_munimji_engine.packs.stock_procurement.erp import PurchaseOrderDraft, VendorOffer
 from erp_agents.core.erp.erpnext import ERPNextClient
 from erp_agents.core.erp.mock import MockERP
 from erp_agents.packs.stock_procurement.inventory.analysis import STATUS_BREACH, STATUS_EARLY, STATUS_OK, analyze_item

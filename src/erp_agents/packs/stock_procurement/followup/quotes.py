@@ -19,7 +19,7 @@ from typing import Any, Optional
 from erp_agents.core.approvals.models import ApprovalRecord, Decision, DecisionRefused
 from erp_agents.core.approvals.service import KindHandler
 from erp_agents.core.common import iso, short_id, untrusted
-from erp_agents.core.erp.base import QuoteRule
+from ai_munimji_engine.packs.stock_procurement.erp import QuoteRule
 from ai_munimji_engine.storage import dumps, loads
 from ..inventory.agent import on_demand_payload
 from ..procurement.scoring import Need, rank_vendors

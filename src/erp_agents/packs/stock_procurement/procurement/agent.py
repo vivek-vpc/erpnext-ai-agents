@@ -26,7 +26,7 @@ from erp_agents.core.settings_store import SettingsStore
 from ai_munimji_engine.storage import dumps
 from ai_munimji_engine.stores.stock.runs import AgentRunStore
 from erp_agents.core.workorders import REORDER_NEEDED, WorkOrderQueue
-from erp_agents.core.erp.base import ERPClient, PurchaseOrderDraft, PurchaseOrderResult, QuoteRule, RequisitionDraft, TaxSetup
+from ai_munimji_engine.packs.stock_procurement.erp import PurchaseOrderDraft, PurchaseOrderResult, QuoteRule, RequisitionDraft, TaxSetup, StockProcurementERP
 from .messages import (
     KIND_MANUAL, KIND_ORDER, KIND_PO, KIND_PR, build_manual_request, build_order_request, build_po_request, expected_arrival, requisition_note, route_for, vendor_note_for,
 )
@@ -72,7 +72,7 @@ class _Need:
 
 
 class ProcurementAgent:
-    def __init__(self, erp: ERPClient, settings: SettingsStore, proposals: ProposalRepo, approvals: ApprovalService,
+    def __init__(self, erp: StockProcurementERP, settings: SettingsStore, proposals: ProposalRepo, approvals: ApprovalService,
                  workorders: WorkOrderQueue, runs: AgentRunStore, transaction: Callable[[], ContextManager[Any]], clock: Clock = utcnow) -> None:
         self.erp, self.settings, self.proposals = erp, settings, proposals
         self.approvals, self.workorders, self.runs, self.transaction, self.clock = approvals, workorders, runs, transaction, clock

@@ -378,7 +378,7 @@ def main() -> int:
         configured = base_cfg["erp"].get("company")
         assert len(companies) <= 1 or configured in companies, f"ERPNext has {companies} but {CONFIG} sets erp.company to {configured!r}: a draft order would land in the account's default company"
         refused = ERPNextClient(base_cfg["erp"]["url"], base_cfg["erp"]["api_key"], base_cfg["erp"]["api_secret"]).create_purchase_order(
-            __import__("erp_agents.core.erp.base", fromlist=["PurchaseOrderDraft"]).PurchaseOrderDraft("none", "none", 1, 1.0, "Nos", date.today())) if len(companies) > 1 else None
+            __import__("ai_munimji_engine.packs.stock_procurement.erp", fromlist=["PurchaseOrderDraft"]).PurchaseOrderDraft("none", "none", 1, 1.0, "Nos", date.today())) if len(companies) > 1 else None
         assert refused is None or (not refused.ok and "several companies" in refused.error), refused
         return f"ERPNext has {len(companies)} companies ({', '.join(companies)}); the configuration sets erp.company = {configured!r}; a client without a company refuses to create an order instead of guessing"
 
@@ -972,7 +972,7 @@ def main() -> int:
     @case("PO-07", "P0", "Lost response after ERPNext accepted the POST: retry must not create a second PO")
     def _():
         import requests as rq
-        from erp_agents.core.erp.base import PurchaseOrderDraft
+        from ai_munimji_engine.packs.stock_procurement.erp import PurchaseOrderDraft
 
         class LoseOnePostAnswer:
             """The real ERPNext session, except that the answer to the first order creation is lost after ERPNext has stored the order."""
@@ -1090,7 +1090,7 @@ def main() -> int:
 
     @case("PR-01", "P0", "A purchase requisition (Material Request) is created as a draft with the recommendation, and is safe to retry")
     def _():
-        from erp_agents.core.erp.base import RequisitionDraft
+        from ai_munimji_engine.packs.stock_procurement.erp import RequisitionDraft
         ref = "e2e-pr01-" + hashlib.sha256(os.urandom(6)).hexdigest()[:8]
         made = []
         try:
@@ -1586,7 +1586,7 @@ def main() -> int:
 
     @case("CHAT-06", "P0", "A requisition created through the app can be asked about by number, with who created and approved it; the chat itself changes nothing")
     def _():
-        from erp_agents.core.erp.base import RequisitionDraft
+        from ai_munimji_engine.packs.stock_procurement.erp import RequisitionDraft
         ref = "e2e-chat06-" + hashlib.sha256(os.urandom(6)).hexdigest()[:8]
         res = erp.create_material_request(RequisitionDraft(ITEM, 500, "Nos", date.today() + timedelta(days=7), rate=23.44, note="Recommended vendor: test.", reference=ref, approved_by="owner via whatsapp"))
         assert res.ok, res.error
