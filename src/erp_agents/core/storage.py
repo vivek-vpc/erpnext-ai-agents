@@ -344,9 +344,5 @@ class Database:
             self._conn.close()
 
 
-def dumps(obj: Any) -> str:
-    return json.dumps(obj, default=str, ensure_ascii=False, sort_keys=True)
-
-
-def loads(text: Optional[str]) -> Any:
-    return None if text is None else json.loads(text)
+# The JSON helpers live in the engine (they have nothing to do with SQLite); the names stay importable from here.
+from ai_munimji_engine.storage import dumps, loads  # noqa: E402,F401

@@ -5,9 +5,9 @@ from erp_agents.core.approvals.channels.base import Channel
 from erp_agents.core.approvals.models import ApprovalOption, ApprovalRequest, DeliveryResult, Recipient, RecipientChannel, Section
 from erp_agents.core.approvals.router import ApprovalRouter
 from erp_agents.core.approvals.service import ApprovalService, KindHandler
-from erp_agents.core.storage import Database
+from erp_agents.stores import build_core_stores
 
-from conftest import APPROVER, OWNER, VIEWER
+from conftest import APPROVER, OWNER, VIEWER, storage_kind
 
 
 class RecordingChannel(Channel):
@@ -49,9 +49,9 @@ def request(kind="test.thing"):
 
 
 def service(clock, channels, recipients, strategy="all"):
-    db = Database(":memory:")
+    stores = build_core_stores(storage_kind())
     router = ApprovalRouter(channels, recipients, strategy)
-    return ApprovalService(db, router, clock=clock), db
+    return ApprovalService(stores.approvals, router, clock=clock, inbound=stores.inbound), stores
 
 
 def one_recipient(*types):
@@ -121,7 +121,7 @@ def test_failover_stops_at_first_channel_that_works(clock):
     svc, db = service(clock, {"a": a, "b": b}, one_recipient("a", "b"), strategy="failover")
     svc.submit(request())
     assert a.sent == [] and len(b.sent) == 1
-    rows = db.query("SELECT channel, status FROM deliveries ORDER BY id")
+    rows = svc.store.deliveries(svc.list()[0].id)
     assert [(r["channel"], r["status"]) for r in rows] == [("a", "failed"), ("b", "sent")]
 
 
@@ -140,7 +140,7 @@ def test_retries_give_up_eventually(clock):
     svc.submit(request())
     for _ in range(10):
         svc.retry_failed_deliveries()
-    assert db.query_one("SELECT status, attempts FROM deliveries")["status"] == "given_up"
+    assert svc.store.deliveries(svc.list()[0].id)[0]["status"] == "given_up"
 
 
 def test_recipients_without_approver_role_are_not_asked(clock):

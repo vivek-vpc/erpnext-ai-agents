@@ -10,8 +10,10 @@ import logging
 
 from typing import Any, Callable, Optional
 
+from ai_munimji_engine.stores.workorders import WorkOrderStore
+
 from .common import Clock, iso, short_id, utcnow
-from .storage import Database, dumps, loads
+from ai_munimji_engine.storage import dumps, loads
 
 log = logging.getLogger(__name__)
 
@@ -19,8 +21,8 @@ REORDER_NEEDED = "REORDER_NEEDED"
 
 
 class WorkOrderQueue:
-    def __init__(self, db: Database, clock: Clock = utcnow) -> None:
-        self.db = db
+    def __init__(self, store: WorkOrderStore, clock: Clock = utcnow) -> None:
+        self.store = store
         self.clock = clock
         self._subs: list[Callable[[dict[str, Any]], None]] = []
 
@@ -30,10 +32,7 @@ class WorkOrderQueue:
     def emit(self, type_: str, payload: dict[str, Any], source: str = "") -> dict[str, Any]:
         now = iso(self.clock())
         wo_id = short_id(10)
-        self.db.execute(
-            "INSERT INTO work_orders(id, type, status, payload_json, source, created_at, updated_at) VALUES (?,?,?,?,?,?,?)",
-            (wo_id, type_, "pending", dumps(payload), source, now, now),
-        )
+        self.store.insert(wo_id, type_, dumps(payload), source, now)
         wo = self.get(wo_id)
         for fn in self._subs:
             try:
@@ -43,23 +42,14 @@ class WorkOrderQueue:
         return wo
 
     def get(self, wo_id: str) -> Optional[dict[str, Any]]:
-        r = self.db.query_one("SELECT * FROM work_orders WHERE id=?", (wo_id,))
+        r = self.store.get(wo_id)
         return _row(r) if r else None
 
     def list(self, status: Optional[str] = None, type_: Optional[str] = None, limit: int = 100) -> list[dict[str, Any]]:
-        sql, params, conds = "SELECT * FROM work_orders", [], []
-        if status:
-            conds.append("status=?"); params.append(status)
-        if type_:
-            conds.append("type=?"); params.append(type_)
-        if conds:
-            sql += " WHERE " + " AND ".join(conds)
-        sql += " ORDER BY created_at DESC LIMIT ?"
-        params.append(limit)
-        return [_row(r) for r in self.db.query(sql, params)]
+        return [_row(r) for r in self.store.list(status, type_, limit)]
 
     def set_status(self, wo_id: str, status: str) -> None:
-        self.db.execute("UPDATE work_orders SET status=?, updated_at=? WHERE id=?", (status, iso(self.clock()), wo_id))
+        self.store.set_status(wo_id, status, iso(self.clock()))
 
 
 def _row(r) -> dict[str, Any]:

@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
+from ai_munimji_engine.stores import CoreStores
+
 from . import metrics, obs, resilience, tracing
 from .audit import AuditChain
 from .history import DecisionHistory
@@ -27,9 +29,9 @@ from .erp.erpnext import ERPNextClient
 from .erp.mock import MockERP
 from .packs import PackError, PackRegistry
 from .settings_store import SettingsStore
-from .storage import Database
 from .toolkit import Toolkit
 from .workorders import WorkOrderQueue
+from ..stores import build_core_stores
 
 log = logging.getLogger(__name__)
 
@@ -43,7 +45,7 @@ class App:
     """The running application: the core's parts, and the services the packs add (`services`, also reachable as attributes: `app.inventory`, `app.procurement` ...)."""
 
     config: dict[str, Any]
-    db: Database
+    stores: CoreStores                              # the storage (stores.py of the engine): SQLite in the standalone service, memory in a test
     settings: SettingsStore
     erp: ERPClient
     channels: dict[str, Channel]
@@ -69,6 +71,11 @@ class App:
     scheduler: Optional[Any] = None                 # the running scheduler, set by `serve` (None in a process that only reads or answers one command): /ready looks at it
     resilience: Optional[Any] = None                # the `resilience:` section (resilience.py ResilienceSettings): breaker limits, rate limits, how long channel message ids are kept
     limits: Optional[Any] = None                    # the per-person rate limits (resilience.py Limits); one set for the whole application
+
+    @property
+    def db(self) -> Any:
+        """The SQLite database, for the code that is about SQLite itself (backup, the doctor, the readiness check). None when the storage is not SQLite."""
+        return self.stores.db
 
     def __getattr__(self, name: str) -> Any:
         # reached only when the application itself has no such attribute: a service a pack provided
@@ -103,6 +110,7 @@ def build_app(
     http: Any = None,
     db_path: Optional[str] = None,
     login: Optional[ErpNextLogin] = None,
+    stores: Optional[CoreStores] = None,
 ) -> App:
     cfg = config if config is not None else load_config(config_path)
     problem = demo_key_problem(cfg)             # before anything is created or opened
@@ -123,12 +131,13 @@ def build_app(
     except tracing.TracingUnavailable as exc:
         raise StartupRefused(str(exc)) from None
 
-    path = db_path or cfg["database"]["path"]
-    if path != ":memory:":
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
-    db = Database(path)
+    if stores is None:                          # the standalone service: SQLite, in the file the configuration names
+        path = db_path or cfg["database"]["path"]
+        if path != ":memory:":
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+        stores = build_core_stores("sqlite", path)
 
-    settings = SettingsStore(db, base_system=cfg.get("system") or {}, clock=clock, base_assistant=cfg.get("assistant") or {}, base_agents=cfg.get("agents") or {},
+    settings = SettingsStore(stores.settings, base_system=cfg.get("system") or {}, clock=clock, base_assistant=cfg.get("assistant") or {}, base_agents=cfg.get("agents") or {},
                              base_packs=cfg.get("packs") or {})
     packs = PackRegistry.discover()
     packs.bind_settings(settings.packs)
@@ -145,8 +154,8 @@ def build_app(
                 if problem:
                     log.warning("recipient %s on %s: the address %s - nothing will be sent to them there", r.id, rc.type, problem)
     router = ApprovalRouter(channels, recipients, (cfg.get("approvals") or {}).get("strategy", "all"))
-    approvals = ApprovalService(db, router, system_settings=settings.system, clock=clock)
-    workorders = WorkOrderQueue(db, clock)
+    approvals = ApprovalService(stores.approvals, router, system_settings=settings.system, clock=clock, inbound=stores.inbound)
+    workorders = WorkOrderQueue(stores.workorders, clock)
 
     tokens: dict[str, Actor] = {}
     for t in (cfg.get("auth") or {}).get("tokens") or []:
@@ -167,16 +176,16 @@ def build_app(
         login = ErpNextLogin(erp.base_url, look=tuple(d for d, p in wanted["look"] if p == "read"), decide=tuple(d for d, p in wanted["decide"] if p == "create"))
     sessions = SessionStore(login, ttl_seconds=float(auth_cfg.get("session_hours", 12)) * 3600,
                             recheck_seconds=float(auth_cfg.get("recheck_minutes", 15)) * 60) if login else None
-    app = App(cfg, db, settings, erp, channels, router, approvals, workorders, tokens, clock, packs,
+    app = App(cfg, stores, settings, erp, channels, router, approvals, workorders, tokens, clock, packs,
               login=login, sessions=sessions, throttle=LoginThrottle() if login else None, observability=observability)
     app.resilience, app.limits = resilience_settings, resilience.Limits(resilience_settings)
     approvals.inbound.memory_days = resilience_settings.inbound_memory_days
-    app.agent_log = AgentLog(db, clock)
-    app.job_log = JobLog(db, clock)
+    app.agent_log = AgentLog(stores.agents, clock)
+    app.job_log = JobLog(stores.jobs, clock)
     app.toolkit = Toolkit(app, log_call=app.agent_log.log_tool)
     app.toolkit.is_enabled = packs.is_enabled      # a pack that is switched off answers nothing, at once
     app.agents = AgentService(app)                 # the optional 'mcp' package is only needed when an agent actually runs
-    app.audit = AuditChain(db, clock)
+    app.audit = AuditChain(stores.audit, clock)
     app.history = DecisionHistory(app)
     approvals.on_closed.append(app.audit.sweep)    # each answer, expiry or cancellation is sealed at once
     settings.on_change(app.audit.sweep)            # and so is each change of settings

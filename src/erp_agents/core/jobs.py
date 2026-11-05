@@ -8,30 +8,30 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Optional
 
+from ai_munimji_engine.stores.jobs import JobRunStore
+
 from .common import Clock, iso, parse_dt, utcnow
-from .storage import Database
 
 MAINTENANCE_JOB = "approval_maintenance"           # the scheduler's housekeeping job, every ten minutes: its last run is the scheduler's heartbeat
 HEARTBEAT_STALE_MINUTES = 35                       # three runs missed, with a little to spare: the scheduler is stuck, not merely busy
 
 
 class JobLog:
-    def __init__(self, db: Database, clock: Clock = utcnow) -> None:
-        self.db, self.clock = db, clock
+    def __init__(self, store: JobRunStore, clock: Clock = utcnow) -> None:
+        self.store, self.clock = store, clock
 
     def started(self, job: str) -> None:
-        self.db.execute("INSERT INTO job_runs(job, last_start, runs) VALUES (?, ?, 1) ON CONFLICT(job) DO UPDATE SET last_start=excluded.last_start, runs=runs+1",
-                        (job, iso(self.clock())))
+        self.store.started(job, iso(self.clock()))
 
     def finished(self, job: str, ok: bool, error: Optional[str] = None) -> None:
-        self.db.execute("UPDATE job_runs SET last_end=?, last_ok=?, last_error=?, failures=failures+? WHERE job=?", (iso(self.clock()), int(ok), None if ok else (error or "failed")[:60], int(not ok), job))
+        self.store.finished(job, iso(self.clock()), ok, None if ok else (error or "failed")[:60])
 
     def get(self, job: str) -> Optional[dict[str, Any]]:
-        row = self.db.query_one("SELECT * FROM job_runs WHERE job=?", (job,))
+        row = self.store.get(job)
         return self._row(row) if row else None
 
     def all(self) -> list[dict[str, Any]]:
-        return [self._row(r) for r in self.db.query("SELECT * FROM job_runs ORDER BY job")]
+        return [self._row(r) for r in self.store.all()]
 
     @staticmethod
     def _row(row: Any) -> dict[str, Any]:

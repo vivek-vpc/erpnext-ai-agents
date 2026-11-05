@@ -21,18 +21,15 @@ import re
 from datetime import date, datetime, timedelta
 from typing import Any, Callable, Optional
 
+from ai_munimji_engine.storage import loads
+
 from .approvals.models import ApprovalRecord
 from .approvals.service import _row_to_record
-from .storage import loads
 
 log = logging.getLogger(__name__)
 MAX_LIMIT = 500
 SCAN_LIMIT = 20000                 # most rows looked at for one search (a small business makes far fewer)
 REASON_HEADINGS = ("why", "reason", "situation", "recommendation", "effect")          # sections that say why; a pack adds its own words (`reason_headings`)
-
-
-def _like(term: str) -> str:
-    return "%" + term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
 
 
 def _day(value: Optional[str]) -> Optional[str]:
@@ -96,26 +93,9 @@ class DecisionHistory:
         limit, offset = max(1, min(int(limit), MAX_LIMIT)), max(0, int(offset))
         since, until = _day(since), _day(until)
         terms = [t for t in re.split(r"\s+", (q or "").strip()) if t][:8]
-        sql, params = ["SELECT * FROM approvals WHERE 1=1"], []
-        for t in terms:
-            sql.append("AND (request_json LIKE ? ESCAPE '\\' OR COALESCE(decision_json,'') LIKE ? ESCAPE '\\' OR COALESCE(status_note,'') LIKE ? ESCAPE '\\' OR kind LIKE ? ESCAPE '\\' OR id = ?)")
-            params += [_like(t), _like(t), _like(t), _like(t), t]
-        if kind:
-            sql.append("AND kind LIKE ? ESCAPE '\\'")
-            params.append(_like(kind))
-        if status:
-            sql.append("AND status = ?")
-            params.append(status)
-        if since:
-            sql.append("AND created_at >= ?")
-            params.append(since)
-        if until:
-            sql.append("AND created_at < ?")
-            params.append((date.fromisoformat(until) + timedelta(days=1)).isoformat())
-        sql.append("ORDER BY created_at DESC LIMIT ?")
-        params.append(SCAN_LIMIT)
+        before = (date.fromisoformat(until) + timedelta(days=1)).isoformat() if until else None
         entries = []
-        for row in self.app.db.query(" ".join(sql), params):
+        for row in self.app.stores.approvals.search(terms, kind, status, since, before, SCAN_LIMIT):
             rec = _row_to_record(row)
             if item and str((rec.request.facts or {}).get("item_code") or "").lower() != item.lower() and item.lower() not in [str(i).lower() for i in (rec.request.facts or {}).get("items") or []]:
                 continue
@@ -141,7 +121,7 @@ class DecisionHistory:
 
     def _settings(self, terms: list[str], who: Optional[str], since: Optional[str], until: Optional[str], for_model: bool) -> list[dict[str, Any]]:
         out = []
-        for r in self.app.db.query("SELECT * FROM settings_audit ORDER BY id DESC LIMIT ?", (SCAN_LIMIT,)):
+        for r in self.app.stores.settings.audit(SCAN_LIMIT):
             text = " ".join(str(r[k] or "") for k in ("actor", "scope_type", "scope_key", "field", "old_json", "new_json")).lower()
             if any(t.lower() not in text for t in terms) or (who and who.lower() not in r["actor"].lower()):
                 continue
@@ -158,9 +138,9 @@ class DecisionHistory:
         return out
 
     def _people(self) -> set[str]:
-        names = {r["actor"] for r in self.app.db.query("SELECT DISTINCT actor FROM settings_audit")}
-        for r in self.app.db.query("SELECT decision_json FROM approvals WHERE decision_json IS NOT NULL"):
-            d = loads(r["decision_json"]) or {}
+        names = set(self.app.stores.settings.audit_actors())
+        for text in self.app.stores.approvals.decision_texts():
+            d = loads(text) or {}
             if d.get("actor_id"):
                 names.add(d["actor_id"])
         for rec in getattr(self.app.router, "recipients", []) or []:
@@ -190,16 +170,15 @@ class DecisionHistory:
         out["params"] = rec.decision.params if rec.decision else {}
         out["status_note"] = rec.status_note
         out["sent_to"] = [{"channel": d["channel"], "recipient": d["recipient_id"], "status": d["status"], "at": d["sent_at"]}
-                          for d in self.app.db.query("SELECT channel, recipient_id, status, sent_at FROM deliveries WHERE approval_id=? ORDER BY id", (approval_id,))]
+                          for d in self.app.stores.approvals.deliveries(approval_id)]
         out["reminders"] = rec.reminder_count
-        same = self.app.db.query("SELECT id, kind, status, created_at, status_note FROM approvals WHERE ref_type=? AND ref_id=? AND id!=? ORDER BY created_at",
-                                 (rec.request.ref_type, rec.request.ref_id, rec.id)) if rec.request.ref_id else []
+        same = self.app.stores.approvals.with_reference(rec.request.ref_type, rec.request.ref_id, rec.id) if rec.request.ref_id else []
         out["versions"] = [{"id": r["id"], "status": r["status"], "at": r["created_at"], "note": r["status_note"]} for r in same if r["kind"] == rec.kind]      # earlier or later versions of this request
         out["related"] = [{"id": r["id"], "kind": r["kind"], "what": self.kind_description(r["kind"]), "status": r["status"], "at": r["created_at"]}
                           for r in same if r["kind"] != rec.kind]                                                                                 # what followed from it (e.g. managing the order)
         out["ai"] = [{"task": r["id"], "agent": r["agent"], "kind": r["task"], "status": r["status"], "at": r["started_at"], "model": r["model"],
-                      "result": (loads(r["result_json"]) or {}) if r["result_json"] else None} for r in self.app.db.query(
-            "SELECT * FROM agent_tasks WHERE approval_id=? OR result_json LIKE ? ESCAPE '\\' ORDER BY started_at", (approval_id, _like(f'"request_id": "{approval_id}"')))]
+                      "result": (loads(r["result_json"]) or {}) if r["result_json"] else None}
+                     for r in self.app.stores.agents.tasks_about(approval_id, f'"request_id": "{approval_id}"')]
         extra = []
         for provide in self.extras:
             try:

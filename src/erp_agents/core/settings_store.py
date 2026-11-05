@@ -9,12 +9,13 @@ from __future__ import annotations
 import logging
 from typing import Any, Callable, Optional
 
+from ai_munimji_engine.storage import dumps, loads
+from ai_munimji_engine.stores.settings import SettingsOverrideStore
 from pydantic import ValidationError
 
 from .common import Actor, Clock, iso, utcnow
 from .packs import PackSettings
 from .policy import AgentSettings, AssistantSettings, SystemSettings
-from .storage import Database, dumps, loads
 
 log = logging.getLogger(__name__)
 
@@ -33,14 +34,14 @@ class PermissionDenied(PermissionError):
 class SettingsStore:
     def __init__(
         self,
-        db: Database,
+        store: SettingsOverrideStore,
         base_system: Optional[dict] = None,
         clock: Clock = utcnow,
         base_assistant: Optional[dict] = None,
         base_agents: Optional[dict] = None,
         base_packs: Optional[dict] = None,
     ) -> None:
-        self.db = db
+        self.store = store
         self.clock = clock
         self._base_system = base_system or {}
         self._system_model: type = SystemSettings
@@ -134,10 +135,8 @@ class SettingsStore:
 
     # ---------------------------------------------------------------- reads
     def get_overrides(self, scope_type: str, scope_key: str) -> dict[str, Any]:
-        row = self.db.query_one(
-            "SELECT data_json FROM settings_overrides WHERE scope_type=? AND scope_key=?", (scope_type, scope_key)
-        )
-        return loads(row["data_json"]) if row else {}
+        text = self.store.get(scope_type, scope_key)
+        return loads(text) if text is not None else {}
 
     def effective_scoped(self, kind: str, item_code: Optional[str] = None, item_group: Optional[str] = None) -> Any:
         return self._resolve(kind, item_code, item_group)[0]
@@ -286,26 +285,13 @@ class SettingsStore:
 
     # ---------------------------------------------------------------- audit
     def audit(self, limit: int = 100, scope_type: Optional[str] = None, scope_key: Optional[str] = None) -> list[dict]:
-        sql = "SELECT * FROM settings_audit"
-        params: list[Any] = []
-        conds = []
-        if scope_type:
-            conds.append("scope_type=?")
-            params.append(scope_type)
-        if scope_key:
-            conds.append("scope_key=?")
-            params.append(scope_key)
-        if conds:
-            sql += " WHERE " + " AND ".join(conds)
-        sql += " ORDER BY id DESC LIMIT ?"
-        params.append(limit)
         return [
             {
                 "id": r["id"], "ts": r["ts"], "actor": r["actor"], "scope_type": r["scope_type"],
                 "scope_key": r["scope_key"], "field": r["field"],
                 "old": loads(r["old_json"]), "new": loads(r["new_json"]),
             }
-            for r in self.db.query(sql, params)
+            for r in self.store.audit(limit, scope_type, scope_key)
         ]
 
     # ---------------------------------------------------------------- internals
@@ -316,23 +302,12 @@ class SettingsStore:
     def _save(self, kind: str, scope_type: str, scope_key: str, old: dict, new: dict, actor: Actor) -> None:
         now = iso(self.clock())
         db_scope = kind if kind == "system" or kind in self._sections else scope_type
-        with self.db.transaction():
-            if new:
-                self.db.execute(
-                    "INSERT INTO settings_overrides(scope_type, scope_key, data_json, updated_by, updated_at) VALUES (?,?,?,?,?) "
-                    "ON CONFLICT(scope_type, scope_key) DO UPDATE SET data_json=excluded.data_json, "
-                    "updated_by=excluded.updated_by, updated_at=excluded.updated_at",
-                    (db_scope, scope_key, dumps(new), actor.id, now),
-                )
-            else:
-                self.db.execute("DELETE FROM settings_overrides WHERE scope_type=? AND scope_key=?", (db_scope, scope_key))
-            for field in sorted(set(old) | set(new)):
-                before, after = old.get(field, "<inherited>"), new.get(field, "<inherited>")
-                if before != after:
-                    self.db.execute(
-                        "INSERT INTO settings_audit(ts, actor, scope_type, scope_key, field, old_json, new_json) VALUES (?,?,?,?,?,?,?)",
-                        (now, actor.id, db_scope, scope_key, field, dumps(before), dumps(after)),
-                    )
+        changes = []
+        for field in sorted(set(old) | set(new)):
+            before, after = old.get(field, "<inherited>"), new.get(field, "<inherited>")
+            if before != after:
+                changes.append((field, dumps(before), dumps(after)))
+        self.store.save(db_scope, scope_key, dumps(new) if new else None, actor.id, now, changes)
         for fn in self._listeners:
             fn(db_scope, scope_key)
 

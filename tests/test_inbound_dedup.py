@@ -11,7 +11,7 @@ import sqlite3
 import pytest
 from fastapi.testclient import TestClient
 
-from conftest import FakeHTTP
+from conftest import FakeHTTP, storage_kind
 from erp_agents.core import metrics
 from erp_agents.core.api.app import create_app
 from erp_agents.core.approvals.channels.simple import InboxChannel
@@ -21,6 +21,7 @@ from erp_agents.core.approvals.inbound_ledger import InboundLedger
 from erp_agents.core.erp.mock import MockERP
 from erp_agents.core.scheduler import AgentScheduler
 from erp_agents.core.storage import Database
+from erp_agents.stores import build_core_stores
 
 WA_SECRET, TG_SECRET, PHONE, CHAT = "wa-app-secret", "tg-secret", "919800000000", "555"
 QUESTION = "How much BOLT-M8 do we have?"
@@ -215,8 +216,7 @@ def test_the_number_of_days_comes_from_the_settings(make_app, clock):
 
 # ------------------------------------------------------------------ the ledger itself
 def test_the_ledger_claims_each_id_once_per_channel_and_can_give_one_back():
-    db = Database(":memory:")
-    ledger = InboundLedger(db, lambda: __import__("datetime").datetime(2026, 10, 29, 9, 0, tzinfo=__import__("datetime").timezone.utc))
+    ledger = InboundLedger(build_core_stores(storage_kind()).inbound, lambda: __import__("datetime").datetime(2026, 10, 29, 9, 0, tzinfo=__import__("datetime").timezone.utc))
     assert ledger.claim("whatsapp", "a") is True and ledger.claim("whatsapp", "a") is False
     assert ledger.claim("telegram", "a") is True                                            # another channel's ids are its own
     ledger.release("whatsapp", "a")

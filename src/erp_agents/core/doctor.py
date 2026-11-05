@@ -32,6 +32,7 @@ from .config import HASH_KEY_ENV, hash_key_state
 from .jobs import HEARTBEAT_STALE_MINUTES, MAINTENANCE_JOB
 from .ops import AlreadyRunning, InstanceLock, verify_database
 from .storage import SCHEMA_VERSION
+from ..stores.sqlite_core import SqliteAuditStore
 
 OK, INFO, WARN, FAIL = "ok", "info", "warn", "fail"
 LOOPBACK = ("127.0.0.1", "::1", "localhost")
@@ -441,7 +442,7 @@ def check_clock(db: _ReadOnlyDb, tables: set[str], when: datetime) -> list[Check
 def check_history(db: _ReadOnlyDb, tables: set[str]) -> list[Check]:
     if "audit_chain" not in tables:
         return []
-    result = AuditChain(db).verify()                                           # type: ignore[arg-type]  # only query() and query_one() are used: read-only
+    result = AuditChain(SqliteAuditStore(db)).verify()                         # type: ignore[arg-type]  # only query() and query_one() are used: read-only
     if result["ok"]:
         waiting = f"; {result['not_sealed_yet']} closed request(s) are sealed the next time the application runs" if result["not_sealed_yet"] else ""
         return [Check("Decision history", OK, "the seal over the decision history is intact", f"{result['entries']} sealed entries{waiting}")]

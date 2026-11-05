@@ -1,10 +1,12 @@
 import copy
 import json
+import os
 from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from erp_agents.core.bootstrap import build_app
+from erp_agents.stores import BACKENDS, build_core_stores
 from erp_agents.core.config import DEFAULT_CONFIG
 from erp_agents.core.common import Actor
 
@@ -14,6 +16,23 @@ STOCK_NEEDS = list(PackRegistry.discover().manifests["stock_procurement"].erp_pe
 OWNER = Actor("owner", frozenset({"admin", "approver"}), "test")
 APPROVER = Actor("manager", frozenset({"approver"}), "test")
 VIEWER = Actor("accountant", frozenset({"viewer"}), "test")
+
+
+def storage_kind() -> str:
+    """Which storage the whole suite runs on: `sqlite` (the default) or `memory` (`ERP_AGENTS_TEST_STORAGE=memory`). A test that restarts the application on a database file
+    (it passes `db_path`) is about SQLite itself and keeps using it; so are the tests marked `sqlite_only`."""
+    kind = os.environ.get("ERP_AGENTS_TEST_STORAGE", "sqlite")
+    if kind not in BACKENDS:
+        raise pytest.UsageError(f"ERP_AGENTS_TEST_STORAGE must be one of {', '.join(BACKENDS)}, not {kind!r}")
+    return kind
+
+
+@pytest.fixture(params=BACKENDS)
+def stores(request):
+    """One bundle of the core's stores per backend: the contract tests run on every backend, whatever the suite is set to."""
+    bundle = build_core_stores(request.param)
+    yield bundle
+    bundle.close()
 
 
 class FakeClock:
@@ -96,7 +115,8 @@ def make_app(clock):
         base.setdefault("system", {})["stock_alerts"] = False        # these tests exercise the request flow; stock alerts (sent before it) have their own tests
         for k, v in (cfg or {}).items():
             base[k] = {**base.get(k, {}), **v} if isinstance(v, dict) and isinstance(base.get(k), dict) else v
-        app = build_app(config=base, clock=clock, erp=erp, channels=channels, http=http, db_path=db_path)
+        kind = storage_kind() if db_path == ":memory:" else "sqlite"
+        app = build_app(config=base, clock=clock, erp=erp, channels=channels, http=http, db_path=db_path, stores=build_core_stores(kind, db_path) if kind != "sqlite" else None)
         console = app.channels.get("console")
         if console is not None:
             console.writer = lambda s: None

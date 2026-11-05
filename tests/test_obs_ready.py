@@ -15,7 +15,8 @@ from erp_agents.core.api.app import create_app
 from erp_agents.core.erp.mock import MockERP
 from erp_agents.core.jobs import HEARTBEAT_STALE_MINUTES, MAINTENANCE_JOB, JobLog
 from erp_agents.core.scheduler import AgentScheduler
-from erp_agents.core.storage import Database
+from conftest import storage_kind
+from erp_agents.stores import build_core_stores
 
 KEY = "owner-key-0123456789abcdefghij"
 AUTH = {"auth": {"tokens": [{"user": "owner", "token": KEY, "roles": ["admin", "approver"]}]}, "observability": {"metrics": True}}
@@ -48,7 +49,7 @@ def check(body, name):
 
 # ------------------------------------------------------------------ the record of runs
 def test_a_job_leaves_when_it_began_and_ended_how_often_it_ran_and_how_it_ended(clock):
-    jobs = JobLog(Database(":memory:"), clock)
+    jobs = JobLog(build_core_stores(storage_kind()).jobs, clock)
     assert jobs.get("inventory_check") is None and jobs.last_activity("inventory_check") is None
     jobs.started("inventory_check")
     assert jobs.get("inventory_check")["last_end"] is None and jobs.last_activity("inventory_check") == clock()          # running now

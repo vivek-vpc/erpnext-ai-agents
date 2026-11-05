@@ -15,6 +15,7 @@ from erp_agents.core.common import iso
 from erp_agents.core.jobs import MAINTENANCE_JOB, JobLog
 from erp_agents.core.ops import InstanceLock
 from erp_agents.core.storage import Database
+from erp_agents.stores.sqlite_core import SqliteAuditStore, SqliteJobRunStore
 
 NOW = time.time()
 Usage = namedtuple("Usage", "total used free")
@@ -40,7 +41,7 @@ def approval(db, id, status="pending", created=None, decided=None):
 
 
 def ran(db, job, minutes_ago, ok=True, error=None):
-    jobs = JobLog(db, lambda: at(minutes_ago))
+    jobs = JobLog(SqliteJobRunStore(db), lambda: at(minutes_ago))
     jobs.started(job)
     jobs.finished(job, ok, error)
 
@@ -193,7 +194,7 @@ def sealed(tmp_path):
     db, path = database(tmp_path)
     approval(db, "a1", status="decided", created=at(60), decided=at(30))
     approval(db, "a2", status="expired", created=at(50), decided=at(20))
-    AuditChain(db, lambda: at(10)).sweep()
+    AuditChain(SqliteAuditStore(db), lambda: at(10)).sweep()
     return db, path
 
 

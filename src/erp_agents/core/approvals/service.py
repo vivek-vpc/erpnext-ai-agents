@@ -9,17 +9,19 @@ Lifecycle: submit -> (delivered on N channels) -> decide | expire | cancel.
 from __future__ import annotations
 
 import logging
-import sqlite3
 import threading
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any, Callable, Optional
 
+from ai_munimji_engine.storage import dumps, loads
+from ai_munimji_engine.stores.approvals import ApprovalStore
+from ai_munimji_engine.stores.inbound import InboundSeenStore
+
 from .. import obs
 from .. import metrics
 from ..common import Actor, Clock, iso, parse_dt, short_id, untrusted, utcnow
 from ..policy import SystemSettings
-from ..storage import Database, dumps, loads
 from .inbound_ledger import InboundLedger
 from .models import ACTION_DETAILS, ApprovalRecord, ApprovalRequest, Decision, DecisionRefused, DecisionResult
 from .router import ApprovalRouter
@@ -53,12 +55,14 @@ class KindHandler:
 class ApprovalService:
     def __init__(
         self,
-        db: Database,
+        store: ApprovalStore,
         router: ApprovalRouter,
         system_settings: Callable[[], SystemSettings] = SystemSettings,
         clock: Clock = utcnow,
+        *,
+        inbound: InboundSeenStore,
     ) -> None:
-        self.db = db
+        self.store = store
         self.router = router
         self.system_settings = system_settings
         self.clock = clock
@@ -72,7 +76,7 @@ class ApprovalService:
         self.unknown_sender_handlers: list[Callable[[Any, Any], bool]] = []
         self.on_closed: list[Callable[[], None]] = []                       # told after any request was answered, expired, cancelled or replaced (the audit seal)
         self._warned: set[str] = set()
-        self.inbound = InboundLedger(db, clock)                              # the ids of the messages the channels delivered, to recognise one that comes again
+        self.inbound = InboundLedger(inbound, clock)                            # the ids of the messages the channels delivered, to recognise one that comes again
 
     def register_handler(self, kind: str, handler: KindHandler) -> None:
         self._handlers[kind] = handler
@@ -85,10 +89,7 @@ class ApprovalService:
             id=short_id(10), kind=request.kind, status="pending", request=request,
             created_at=now, expires_at=now + timedelta(hours=hours),
         )
-        self.db.execute(
-            "INSERT INTO approvals(id, kind, status, request_json, ref_type, ref_id, created_at, expires_at) VALUES (?,?,?,?,?,?,?,?)",
-            (record.id, record.kind, "pending", dumps(request.model_dump()), request.ref_type, request.ref_id, iso(now), iso(record.expires_at)),
-        )
+        self.store.insert(record.id, record.kind, dumps(request.model_dump()), request.ref_type, request.ref_id, iso(now), iso(record.expires_at))
         if deliver:
             self.deliver(record)
             for listener in self.on_submitted:
@@ -102,7 +103,7 @@ class ApprovalService:
         """Send a plain message to everyone who was sent this request, on the channel they got it on. Returns how many it reached."""
         reached = 0
         seen: set[tuple[str, str]] = set()
-        for d in self.db.query("SELECT channel, address FROM deliveries WHERE approval_id=? AND status='sent' ORDER BY id", (approval_id,)):
+        for d in self.store.deliveries(approval_id, "sent"):
             key = (d["channel"], d["address"] or "")
             ch = self.router.channels.get(d["channel"])
             if ch is None or not d["address"] or key in seen:
@@ -136,19 +137,13 @@ class ApprovalService:
 
     def _log_delivery(self, approval_id: str, recipient_id: str, channel: str, address: Optional[str],
                       ok: bool, external_id: Optional[str], error: Optional[str]) -> None:
-        self.db.execute(
-            "INSERT INTO deliveries(approval_id, recipient_id, channel, address, status, external_id, error, sent_at) VALUES (?,?,?,?,?,?,?,?)",
-            (approval_id, recipient_id, channel, address, "sent" if ok else "failed", external_id, obs.scrub(error) if error else error, iso(self.clock())),      # a network error can quote a token or a number
-        )
+        self.store.add_delivery(approval_id, recipient_id, channel, address, "sent" if ok else "failed", external_id, obs.scrub(error) if error else error,
+                                iso(self.clock()))      # a network error can quote a token or a number
 
     def retry_failed_deliveries(self) -> int:
         """Re-send failed deliveries for still-pending requests (flaky network, API hiccup)."""
-        rows = self.db.query(
-            "SELECT d.* FROM deliveries d JOIN approvals a ON a.id=d.approval_id "
-            "WHERE d.status='failed' AND a.status='pending' AND d.attempts < ?", (MAX_DELIVERY_ATTEMPTS,),
-        )
         fixed = 0
-        for d in rows:
+        for d in self.store.failed_deliveries(MAX_DELIVERY_ATTEMPTS):
             rec = self.get(d["approval_id"])
             channel = self.router.channels.get(d["channel"])
             if not rec or not channel:
@@ -156,39 +151,26 @@ class ApprovalService:
             res = channel.send_approval(rec, d["address"])
             attempts = d["attempts"] + 1
             status = "sent" if res.ok else ("given_up" if attempts >= MAX_DELIVERY_ATTEMPTS else "failed")
-            self.db.execute("UPDATE deliveries SET status=?, external_id=?, error=?, attempts=?, sent_at=? WHERE id=?",
-                            (status, res.external_id, obs.scrub(res.error) if res.error else res.error, attempts, iso(self.clock()), d["id"]))
+            self.store.update_delivery(d["id"], status, res.external_id, obs.scrub(res.error) if res.error else res.error, attempts, iso(self.clock()))
             fixed += int(res.ok)
         return fixed
 
     # ---------------------------------------------------------------- read
     def get(self, approval_id: str) -> Optional[ApprovalRecord]:
-        row = self.db.query_one("SELECT * FROM approvals WHERE id=?", (approval_id,))
+        row = self.store.get(approval_id)
         return _row_to_record(row) if row else None
 
     def approval_for_message(self, channel: str, external_id: str, address: str) -> Optional[str]:
         """The approval a chat message was about: the request that was sent as message `external_id` on `channel` to `address` (its most recent delivery)."""
-        row = self.db.query_one("SELECT approval_id FROM deliveries WHERE channel=? AND external_id=? AND address=? ORDER BY id DESC LIMIT 1",
-                                (channel, str(external_id), str(address)))
-        return row["approval_id"] if row else None
+        return self.store.approval_for_message(channel, str(external_id), str(address))
 
     def list(self, status: Optional[str] = None, limit: int = 50) -> list[ApprovalRecord]:
-        if status:
-            rows = self.db.query("SELECT * FROM approvals WHERE status=? ORDER BY created_at DESC LIMIT ?", (status, limit))
-        else:
-            rows = self.db.query("SELECT * FROM approvals ORDER BY created_at DESC LIMIT ?", (limit,))
-        return [_row_to_record(r) for r in rows]
+        return [_row_to_record(r) for r in self.store.list(status or None, limit)]
 
     def metrics_snapshot(self) -> dict[str, Any]:
         """What the monitoring reads (core/metrics.py): requests waiting and since when, closed requests by kind and how they ended, messages by channel and status."""
-        row = self.db.query_one("SELECT COUNT(*) AS n, MIN(created_at) AS oldest FROM approvals WHERE status='pending'")
-        try:
-            decisions = self.db.query("SELECT kind, COALESCE(NULLIF(json_extract(decision_json, '$.action'), ''), status) AS outcome, COUNT(*) AS n "
-                                      "FROM approvals WHERE status != 'pending' GROUP BY kind, outcome")
-        except sqlite3.OperationalError:                         # a SQLite built without its JSON functions: how they ended, without which answer was given
-            decisions = self.db.query("SELECT kind, status AS outcome, COUNT(*) AS n FROM approvals WHERE status != 'pending' GROUP BY kind, status")
-        deliveries = self.db.query("SELECT channel, status, COUNT(*) AS n FROM deliveries GROUP BY channel, status")
-        return {"pending": int(row["n"]), "oldest_pending": parse_dt(row["oldest"]), "decisions": [dict(r) for r in decisions], "deliveries": [dict(r) for r in deliveries]}
+        row = self.store.pending_summary()
+        return {"pending": int(row["n"]), "oldest_pending": parse_dt(row["oldest"]), "decisions": self.store.outcome_counts(), "deliveries": self.store.delivery_counts()}
 
     # ---------------------------------------------------------------- decide
     def decide(self, approval_id: str, action: str, actor: Actor, channel: str,
@@ -265,13 +247,9 @@ class ApprovalService:
         """Record the answer and let the kind's handler act on it, in one transaction. For an answer just given, and (`recovered`) for one that is finished at start-up."""
         approval_id, now = record.id, decision.decided_at
         try:
-            with self.db.transaction():
-                cur = self.db.execute(
-                    "UPDATE approvals SET status='decided', decision_json=?, decided_at=? WHERE id=? AND status='pending'",
-                    (dumps(decision.model_dump()), iso(now), approval_id),
-                )
-                if cur.rowcount != 1:                       # lost a race with another channel
-                    raise _Lost()
+            with self.store.transaction():
+                if not self.store.decide_if_pending(approval_id, dumps(decision.model_dump()), iso(now)):
+                    raise _Lost()                           # lost a race with another channel
                 handler = self._handlers.get(record.kind)
                 if handler and handler.on_decision:
                     handler.on_decision(self.get(approval_id), decision)   # may raise -> whole decision rolls back
@@ -374,9 +352,8 @@ class ApprovalService:
         """Replace a pending request by a revised one, in one step: the old one is closed (its kind's cancel handler is NOT run: nothing is being abandoned) and
         the new one is stored. Returns None, changing nothing, if the old one was answered or closed in the meantime. Call `finish_supersede` after the surrounding
         transaction has committed to send the new request and retire the old messages."""
-        with self.db.transaction():
-            cur = self.db.execute("UPDATE approvals SET status='cancelled', status_note=? WHERE id=? AND status='pending'", (reason, old_id))
-            if cur.rowcount != 1:
+        with self.store.transaction():
+            if not self.store.cancel_if_pending(old_id, reason):
                 return None
             return self.submit(request, deliver=False)
 
@@ -388,9 +365,8 @@ class ApprovalService:
         self._later(lambda: self.deliver(new))                           # then the new one is sent: after the person's reply if the caller asked for that
 
     def cancel(self, approval_id: str, reason: str) -> bool:
-        with self.db.transaction():
-            cur = self.db.execute("UPDATE approvals SET status='cancelled', status_note=? WHERE id=? AND status='pending'", (reason, approval_id))
-            if cur.rowcount != 1:
+        with self.store.transaction():
+            if not self.store.cancel_if_pending(approval_id, reason):
                 return False
         rec = self.get(approval_id)
         self._closed()
@@ -402,14 +378,12 @@ class ApprovalService:
 
     def expire_due(self) -> list[str]:
         now = self.clock()
-        rows = self.db.query("SELECT id FROM approvals WHERE status='pending' AND expires_at IS NOT NULL AND expires_at <= ?", (iso(now),))
         expired = []
-        for r in rows:
-            with self.db.transaction():
-                cur = self.db.execute("UPDATE approvals SET status='expired' WHERE id=? AND status='pending'", (r["id"],))
-                if cur.rowcount != 1:
+        for approval_id in self.store.due_for_expiry(iso(now)):
+            with self.store.transaction():
+                if not self.store.expire_if_pending(approval_id):
                     continue
-            rec = self.get(r["id"])
+            rec = self.get(approval_id)
             h = self._handlers.get(rec.kind)
             if h and h.on_expired:
                 h.on_expired(rec)
@@ -435,7 +409,7 @@ class ApprovalService:
                     res = self.router.channels[rc.type].send_reminder(rec, rc.address)
                     if res.ok and self.router.strategy == "failover":
                         break
-            self.db.execute("UPDATE approvals SET reminder_count=reminder_count+1, last_reminder_at=? WHERE id=?", (iso(now), rec.id))
+            self.store.add_reminder(rec.id, iso(now))
             reminded.append(rec.id)
         return reminded
 
@@ -443,7 +417,7 @@ class ApprovalService:
         """Tell everyone who was sent the request what came of it, on the channels that do not post the outcome themselves (WhatsApp): Telegram already shows it under
         the request message, and the person who just answered gets it as the reply to their answer. WhatsApp delivers a plain message only while its 24-hour window is open."""
         seen: set[tuple[str, str]] = set()
-        for d in self.db.query("SELECT channel, address FROM deliveries WHERE approval_id=? AND status='sent' ORDER BY id", (record.id,)):
+        for d in self.store.deliveries(record.id, "sent"):
             key = (d["channel"], d["address"] or "")
             ch = self.router.channels.get(d["channel"])
             if ch is None or not d["address"] or key in seen or ch.echoes_outcome or key == (channel, address or ""):
@@ -457,7 +431,7 @@ class ApprovalService:
                 log.warning("could not tell %s what came of request %s: %s", d["channel"], record.id, exc)
 
     def _notify_outcome(self, record: ApprovalRecord, text: str) -> None:
-        for d in self.db.query("SELECT * FROM deliveries WHERE approval_id=? AND status='sent'", (record.id,)):
+        for d in self.store.deliveries(record.id, "sent"):
             ch = self.router.channels.get(d["channel"])
             if ch:
                 try:

@@ -18,8 +18,9 @@ import json
 import logging
 from typing import Any, Callable, Optional
 
+from ai_munimji_engine.stores.audit import AuditStore
+
 from .common import iso, utcnow
-from .storage import Database
 
 log = logging.getLogger(__name__)
 GENESIS = "0" * 64
@@ -43,30 +44,27 @@ def setting_payload(row: Any) -> dict[str, Any]:
 
 
 class AuditChain:
-    def __init__(self, db: Database, clock: Callable[[], Any] = utcnow) -> None:
-        self.db, self.clock = db, clock
+    def __init__(self, store: AuditStore, clock: Callable[[], Any] = utcnow) -> None:
+        self.store, self.clock = store, clock
 
     def _last(self) -> str:
-        row = self.db.query_one("SELECT hash FROM audit_chain ORDER BY seq DESC LIMIT 1")
-        return row["hash"] if row else GENESIS
+        return self.store.last_hash() or GENESIS
 
     def _append(self, source: str, ref_id: str, event: str, payload: dict[str, Any]) -> None:
         at, prev = iso(self.clock()), self._last()
         d = digest(payload)
-        self.db.execute("INSERT INTO audit_chain(at, source, ref_id, event, digest, prev, hash) VALUES (?,?,?,?,?,?,?)", (at, source, ref_id, event, d, prev, link(prev, source, ref_id, event, at, d)))
+        self.store.append(at, source, ref_id, event, d, prev, link(prev, source, ref_id, event, at, d))
 
     def sweep(self, *_: Any) -> int:
         """Seal every closed request and every settings change that is not sealed yet. Safe to call any time, as often as wanted (it is called after each answer, each
         change of settings, at start-up and by the maintenance job). Returns how many were sealed."""
         sealed = 0
-        with self.db.transaction():
-            first = self.db.query_one("SELECT 1 FROM audit_chain LIMIT 1") is None
-            rows = self.db.query("SELECT * FROM approvals WHERE status!='pending' AND id NOT IN (SELECT ref_id FROM audit_chain WHERE source='approval') ORDER BY COALESCE(decided_at, created_at), id")
-            for r in rows:
+        with self.store.transaction():
+            first = self.store.is_empty()
+            for r in self.store.unsealed_approvals():
                 self._append("approval", r["id"], "sealed" if first else r["status"], approval_payload(r))
                 sealed += 1
-            done = self.db.query_one("SELECT MAX(CAST(ref_id AS INTEGER)) AS n FROM audit_chain WHERE source='setting'")["n"] or 0
-            for r in self.db.query("SELECT * FROM settings_audit WHERE id > ? ORDER BY id", (done,)):
+            for r in self.store.settings_after(self.store.last_sealed_setting()):
                 self._append("setting", str(r["id"]), "sealed" if first else "changed", setting_payload(r))
                 sealed += 1
         return sealed
@@ -75,7 +73,7 @@ class AuditChain:
         """Walk the chain. ok = nothing changed, nothing deleted, the chain unbroken."""
         problems: list[str] = []
         prev, n, last_at = GENESIS, 0, None
-        for row in self.db.query("SELECT * FROM audit_chain ORDER BY seq"):
+        for row in self.store.entries():
             n += 1
             if row["prev"] != prev or row["hash"] != link(prev, row["source"], row["ref_id"], row["event"], row["at"], row["digest"]):
                 problems.append(f"the seal itself was edited at entry {row['seq']} ({row['source']} {row['ref_id']})")
@@ -88,16 +86,15 @@ class AuditChain:
             if len(problems) >= 50:
                 problems.append("... and possibly more (stopped after 50)")
                 break
-        unsealed = self.db.query_one("SELECT COUNT(*) AS n FROM approvals WHERE status!='pending' AND id NOT IN (SELECT ref_id FROM audit_chain WHERE source='approval')")["n"]
+        unsealed = self.store.unsealed_count()
         return {"ok": not problems, "entries": n, "latest_hash": prev, "latest_at": last_at, "problems": problems, "not_sealed_yet": unsealed}
 
     def sealed_at(self, source: str, ref_id: str) -> Optional[str]:
-        row = self.db.query_one("SELECT at FROM audit_chain WHERE source=? AND ref_id=? ORDER BY seq LIMIT 1", (source, ref_id))
-        return row["at"] if row else None
+        return self.store.sealed_at(source, ref_id)
 
     def _current(self, source: str, ref_id: str) -> Optional[dict[str, Any]]:
         if source == "approval":
-            row = self.db.query_one("SELECT * FROM approvals WHERE id=?", (ref_id,))
+            row = self.store.current_approval(ref_id)
             return approval_payload(row) if row else None
-        row = self.db.query_one("SELECT * FROM settings_audit WHERE id=?", (int(ref_id),))
+        row = self.store.current_setting(int(ref_id))
         return setting_payload(row) if row else None
