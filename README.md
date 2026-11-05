@@ -483,6 +483,8 @@ src/erp_agents/packs/
   sales/, finance/        empty skeletons: a manifest and a README, no code
 ```
 
+Part of this code, the rule logic, is in a second package of the same repository: `engine/src/ai_munimji_engine/` (the approval service and the audit seal, the settings store, the tool registry, the stock analysis, vendor scoring, alerts, proposals and tools, the ports to the ERP, the storage interfaces and the runtime). Each module that moved kept its place in the tree, so `core/audit.py` above is `ai_munimji_engine/core/audit.py` now. The engine is its own distribution, `ai-munimji-engine` (it needs pydantic and PyYAML only, and is not published); the service installs from the same source with `pip install ".[agents]"` and does not need it published. The aim is a version of the app for Frappe and ERPNext that shares the rule logic; no such app is released, and nothing here is on the Frappe Marketplace. See [docs/DEVELOPING.md](docs/DEVELOPING.md) and [docs/FRAPPE_DECISIONS.md](docs/FRAPPE_DECISIONS.md).
+
 ### Packs: stock and procurement is one pack of a shared core
 
 The program is a **core** (ERPNext access, sign-in and roles, approvals and their channels, the tool registry, the MCP server, the agent runtime with its answer

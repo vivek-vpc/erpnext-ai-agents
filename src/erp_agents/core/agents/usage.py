@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Optional
 
-from ..policy import AgentSettings
+from ai_munimji_engine.core.policy import AgentSettings
 
 
 def month_start(now: datetime) -> datetime:

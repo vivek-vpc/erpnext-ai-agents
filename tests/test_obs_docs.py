@@ -8,13 +8,15 @@ from pathlib import Path
 import pytest
 import yaml
 
-from erp_agents.core import doctor, jobs, metrics, obs, tracing
+from erp_agents.core import doctor
+from ai_munimji_engine.core import jobs, metrics, obs, tracing
 from erp_agents.core.api.hardening import MIN_KEY_LENGTH
 from erp_agents.core.erp.mock import MockERP
 from erp_agents.core.storage import SCHEMA_VERSION
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "src" / "erp_agents"
+SOURCES = (SRC, ROOT / "engine" / "src" / "ai_munimji_engine")          # the standalone service and the engine: the code writes its events and spans in both
 DOC = ROOT / "docs" / "OBSERVABILITY.md"
 TEXT = DOC.read_text(encoding="utf-8")
 
@@ -68,7 +70,7 @@ def test_the_numbers_the_document_gives_for_metrics_are_the_ones_in_the_code():
 def events_in_the_code():
     """{event name: the keyword fields given to it} from every obs.event(...) call, and the two <target>_request events obs.observe_session writes."""
     events, targets = {}, set()
-    for path in SRC.rglob("*.py"):
+    for path in (p for root in SOURCES for p in root.rglob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
@@ -108,7 +110,7 @@ def test_every_field_an_event_is_given_is_in_its_row_of_the_table():
 # ------------------------------------------------------------------ spans
 def test_the_span_table_lists_the_spans_the_code_makes():
     in_code = set()
-    for path in SRC.rglob("*.py"):
+    for path in (p for root in SOURCES for p in root.rglob("*.py")):
         in_code |= set(re.findall(r'tracing\.span\(\s*"([a-z.]+)"', path.read_text(encoding="utf-8")))
     assert in_code == {"agent.task", "llm.call", "tool.call", "erp.request"}
     assert {names_in(r[0])[0] for r in table("tracing:spans")} == in_code

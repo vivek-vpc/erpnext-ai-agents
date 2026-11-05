@@ -18,14 +18,14 @@ from datetime import date, datetime, timedelta
 from typing import Any, Callable, ContextManager, Optional
 from zoneinfo import ZoneInfo
 
-from erp_agents.core.approvals.models import ApprovalRecord, Decision, DecisionRefused, DecisionResult
-from erp_agents.core.approvals.service import ApprovalService, KindHandler, parse_approver
-from erp_agents.core import acting
-from erp_agents.core.common import Actor, Clock, iso, short_id, utcnow
-from erp_agents.core.settings_store import SettingsStore
+from ai_munimji_engine.core.approvals.models import ApprovalRecord, Decision, DecisionRefused, DecisionResult
+from ai_munimji_engine.core.approvals.service import ApprovalService, KindHandler, parse_approver
+from ai_munimji_engine.core import acting
+from ai_munimji_engine.core.common import Actor, Clock, iso, short_id, utcnow
+from ai_munimji_engine.core.settings_store import SettingsStore
 from ai_munimji_engine.storage import dumps
 from ai_munimji_engine.stores.stock.runs import AgentRunStore
-from erp_agents.core.workorders import REORDER_NEEDED, WorkOrderQueue
+from ai_munimji_engine.core.workorders import REORDER_NEEDED, WorkOrderQueue
 from ai_munimji_engine.packs.stock_procurement.erp import PurchaseOrderDraft, PurchaseOrderResult, QuoteRule, RequisitionDraft, TaxSetup, StockProcurementERP
 from .messages import (
     KIND_MANUAL, KIND_ORDER, KIND_PO, KIND_PR, build_manual_request, build_order_request, build_po_request, expected_arrival, requisition_note, route_for, vendor_note_for,

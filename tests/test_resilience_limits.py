@@ -3,7 +3,7 @@ import logging
 
 import pytest
 
-from erp_agents.core import metrics
+from ai_munimji_engine.core import metrics
 from erp_agents.core.resilience import Limits, MemoryRateLimiter, RateLimited, ResilienceSettings, settings_from
 
 

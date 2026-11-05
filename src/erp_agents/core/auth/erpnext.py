@@ -26,8 +26,8 @@ from urllib.parse import quote
 
 import requests
 
-from .. import obs
-from ..common import Actor
+from ai_munimji_engine.core import obs
+from ai_munimji_engine.core.common import Actor
 from ..httpguard import guard_session
 
 log = logging.getLogger(__name__)

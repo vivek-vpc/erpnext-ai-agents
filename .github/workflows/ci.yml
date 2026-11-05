@@ -38,6 +38,39 @@ jobs:
         env:
           ERP_AGENTS_REQUIRE_BROWSER_TESTS: ${{ matrix.os == 'ubuntu-latest' && matrix.python == '3.13' && '1' || '' }}
 
+  # The same suite on the in-memory storage (ERP_AGENTS_TEST_STORAGE=memory): the rule logic does not depend on SQLite. The tests that are about the SQLite file itself are skipped there.
+  tests-memory-storage:
+    name: Tests on the in-memory storage (not a required check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,agents,otel]"
+      - name: Test
+        run: python -m pytest -q
+        env:
+          ERP_AGENTS_TEST_STORAGE: memory
+
+  # The engine (engine/) as its own distribution: built, installed alone into a clean environment under Frappe v16's pinned versions, and every module imported with the web, the database
+  # and the network refused. Python 3.14 is what Frappe 16 runs. Nothing is published.
+  engine-wheel:
+    name: Engine wheel under Frappe's pins (not a required check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Frappe v16's own pyproject.toml (its dependencies are the pins)
+        run: curl -sfL https://raw.githubusercontent.com/frappe/frappe/version-16/pyproject.toml -o frappe-pyproject.toml
+      - name: Build, install, import
+        run: python tools/check_engine_wheel.py --frappe-pyproject frappe-pyproject.toml
+
   ai-evals:
     name: AI evaluation (no model, no ERPNext)
     runs-on: ubuntu-latest
@@ -69,13 +102,13 @@ jobs:
           git clone https://github.com/frappe/semgrep-rules.git frappe-semgrep-rules
           git -C frappe-semgrep-rules checkout 81a6e3d47a328249e8ddf04c586e493dd5553002
       - name: Frappe's rules, errors fail the job (none today)
-        run: semgrep --config frappe-semgrep-rules/rules --severity ERROR --error --metrics=off --exclude "**/tests/**" src
+        run: semgrep --config frappe-semgrep-rules/rules --severity ERROR --error --metrics=off --exclude "**/tests/**" src engine/src
       - name: Frappe's rules, warnings (28 today, all explained in docs/SECURITY_CHECKS.md)
         continue-on-error: true
-        run: semgrep --config frappe-semgrep-rules/rules --severity WARNING --metrics=off --exclude "**/tests/**" src
+        run: semgrep --config frappe-semgrep-rules/rules --severity WARNING --metrics=off --exclude "**/tests/**" src engine/src
       - name: Semgrep's Python correctness rules, as the Frappe guide asks (advisory, because the registry changes without a change here)
         continue-on-error: true
-        run: semgrep --config r/python.lang.correctness --metrics=off --exclude "**/tests/**" src
+        run: semgrep --config r/python.lang.correctness --metrics=off --exclude "**/tests/**" src engine/src
 
   security-scans:
     name: bandit and pip-audit
@@ -90,7 +123,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev,agents,otel]"
       - name: bandit (any finding fails the build; a justified exception carries a nosec comment that says why)
-        run: python -m bandit -r src -q -x "src/erp_agents/packs/*/tests/*"
+        run: python -m bandit -r src engine/src -q -x "src/erp_agents/packs/*/tests/*"
       - name: pip-audit (known vulnerabilities in the dependencies)
         run: python -m pip_audit --skip-editable
 

@@ -13,9 +13,9 @@ from collections import Counter
 from datetime import date, timedelta
 from typing import Any, Optional
 
-from erp_agents.core.common import Actor, untrusted
-from erp_agents.core.packs import ToolDef
-from erp_agents.core.toolkit import MAX_QUOTED, MAX_TEXT_ARG, PREPARE, READ, ToolSpec, clip as _clip, rounded as _r
+from ai_munimji_engine.core.common import Actor, untrusted
+from ai_munimji_engine.core.packs import ToolDef
+from ai_munimji_engine.core.toolkit import MAX_QUOTED, MAX_TEXT_ARG, PREPARE, READ, ToolSpec, clip as _clip, rounded as _r
 from .inventory.agent import on_demand_payload
 
 OVERVIEW_TTL_SECONDS = 60

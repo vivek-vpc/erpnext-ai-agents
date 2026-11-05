@@ -25,12 +25,13 @@ from pydantic import BaseModel, Field
 
 from ..approvals.inbound import process_inbound
 from ..auth.erpnext import LoginError, Verification
-from .. import metrics, resilience
-from ..acting import acting_as
+from .. import resilience
+from ai_munimji_engine.core import metrics
+from ai_munimji_engine.core.acting import acting_as
 from ..bootstrap import App
-from ..common import Actor
+from ai_munimji_engine.core.common import Actor
 from ..health import readiness
-from ..settings_store import SettingsError
+from ai_munimji_engine.core.settings_store import SettingsError
 from .observability import RequestContext
 from .hardening import MIN_KEY_LENGTH, BodyLimit, RemoteAccess, SecurityHeaders, access_key_mode, clean_for_log, console_policy, is_local_request, script_hash, weak_key
 

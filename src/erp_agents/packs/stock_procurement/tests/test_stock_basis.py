@@ -178,13 +178,13 @@ def test_the_setting_can_differ_per_group_or_item_and_is_validated(transit):
     app, _ = transit
     app.settings.update_policy(OWNER, "item", "TRN", {"in_transit_stock": "shelf"})
     assert app.inventory.analyze_one("TRN")[0].available == 110
-    from erp_agents.core.settings_store import SettingsError
+    from ai_munimji_engine.core.settings_store import SettingsError
     with pytest.raises(SettingsError):
         app.settings.update_policy(OWNER, "global", "*", {"in_transit_stock": "somewhere"})
 
 
 def test_overview_rows_and_the_optional_column_show_stock_in_transit(transit):
-    from erp_agents.packs.stock_procurement.settings import MONITOR_COLUMNS
+    from ai_munimji_engine.packs.stock_procurement.settings import MONITOR_COLUMNS
     app, _ = transit
     row = next(r for r in app.inventory.overview() if r["item_code"] == "TRN")
     assert row["in_transit"] == 30 and row["in_transit_stock"] == "arriving"
@@ -193,7 +193,7 @@ def test_overview_rows_and_the_optional_column_show_stock_in_transit(transit):
 
 
 def test_the_messages_say_where_the_stock_in_transit_went(transit):
-    from erp_agents.packs.stock_procurement.inventory.messages import build_request
+    from ai_munimji_engine.packs.stock_procurement.inventory.messages import build_request
     app, _ = transit
     app.settings.update_policy(OWNER, "global", "*", {"min_qty": 500})
     app.inventory.run()

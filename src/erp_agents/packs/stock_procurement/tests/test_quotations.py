@@ -7,12 +7,12 @@ from fastapi.testclient import TestClient
 
 from conftest import OWNER
 from erp_agents.core.api.app import create_app
-from erp_agents.packs.stock_procurement.settings import ProcurementSettings
-from erp_agents.core.workorders import REORDER_NEEDED
+from ai_munimji_engine.packs.stock_procurement.settings import ProcurementSettings
+from ai_munimji_engine.core.workorders import REORDER_NEEDED
 from ai_munimji_engine.packs.stock_procurement.erp import QuoteRule, VendorOffer
 from erp_agents.core.erp.erpnext import ERPNextClient
 from erp_agents.core.erp.mock import MockERP
-from erp_agents.packs.stock_procurement.procurement.scoring import Need, rank_vendors
+from ai_munimji_engine.packs.stock_procurement.procurement.scoring import Need, rank_vendors
 
 TODAY = date(2026, 10, 16)
 NEED = Need(qty=100, cover_days=30, fallback_lead_days=7, uom="kg")

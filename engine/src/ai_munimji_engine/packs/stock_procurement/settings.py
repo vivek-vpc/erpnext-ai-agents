@@ -11,7 +11,7 @@ from typing import Any, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from ai_munimji_engine.packs.stock_procurement.erp import DEFAULT_IN_TRANSIT, DEFAULT_STOCK_ADD, DEFAULT_STOCK_SUBTRACT, IN_TRANSIT_COLUMN, IN_TRANSIT_LABEL, STOCK_COLUMNS
-from erp_agents.core.policy import SystemSettings
+from ai_munimji_engine.core.policy import SystemSettings
 from .templating import TemplateError, check_template
 
 

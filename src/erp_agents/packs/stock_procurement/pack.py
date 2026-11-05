@@ -10,27 +10,27 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from erp_agents.core.common import Actor
+from ai_munimji_engine.core.common import Actor
 from erp_agents.core.config import HASH_KEY_ENV, hash_key_state
-from erp_agents.core.packs import Pack, load_manifest
+from ai_munimji_engine.core.packs import Pack, load_manifest
 
 from .agents.tasks import StockAgentTasks
 from .followup.messages import KIND_CHASE, KIND_QUOTE_REQUEST, KIND_QUOTES, KIND_RECEIPT
 from .followup.service import FollowUp, StockInsight
 from .inventory.counts import KIND_COUNT_PLAN, KIND_COUNT_VARIANCE
 from .inventory.slow_stock import KIND_SLOW
-from .inventory.messages import KIND_TRANSFER
+from ai_munimji_engine.packs.stock_procurement.inventory.messages import KIND_TRANSFER
 from .inventory.transfers import StockTransfers
 from .assistant.chat import ChatService
 from .assistant.conversation import Conversation
 from .assistant.service import AssistantService
-from .inventory.agent import InventoryAgent
-from .inventory.alerts import AlertRepo
-from .procurement.agent import ProcurementAgent
-from .procurement.proposals import ProposalRepo
-from .settings import attach as attach_settings
+from ai_munimji_engine.packs.stock_procurement.inventory.agent import InventoryAgent
+from ai_munimji_engine.packs.stock_procurement.inventory.alerts import AlertRepo
+from ai_munimji_engine.packs.stock_procurement.procurement.agent import ProcurementAgent
+from ai_munimji_engine.packs.stock_procurement.procurement.proposals import ProposalRepo
+from ai_munimji_engine.packs.stock_procurement.settings import attach as attach_settings
 from .stores import stock_stores_for
-from .tools import StockTools
+from ai_munimji_engine.packs.stock_procurement.tools import StockTools
 
 log = logging.getLogger(__name__)
 HERE = Path(__file__).resolve().parent

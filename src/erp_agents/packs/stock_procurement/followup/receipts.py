@@ -15,11 +15,11 @@ from collections import defaultdict
 from datetime import timedelta
 from typing import Any, Optional
 
-from erp_agents.core.approvals.models import ApprovalRecord, Decision
-from erp_agents.core.approvals.service import KindHandler
-from erp_agents.core.common import iso
+from ai_munimji_engine.core.approvals.models import ApprovalRecord, Decision
+from ai_munimji_engine.core.approvals.service import KindHandler
+from ai_munimji_engine.core.common import iso
 from ai_munimji_engine.storage import dumps, loads
-from ..inventory.analysis import _n
+from ai_munimji_engine.packs.stock_procurement.inventory.analysis import _n
 from .messages import KIND_RECEIPT, build_receipt_request
 
 log = logging.getLogger(__name__)

@@ -3,9 +3,9 @@ from datetime import date, timedelta
 
 import pytest
 
-from erp_agents.packs.stock_procurement.settings import Policy
+from ai_munimji_engine.packs.stock_procurement.settings import Policy
 from erp_agents.core.erp.mock import MockERP
-from erp_agents.packs.stock_procurement.inventory.analysis import SEV_CRITICAL, SEV_EARLY, SEV_HIGH, SEV_INFO, STATUS_BREACH, STATUS_EARLY, STATUS_OK, analyze_item
+from ai_munimji_engine.packs.stock_procurement.inventory.analysis import SEV_CRITICAL, SEV_EARLY, SEV_HIGH, SEV_INFO, STATUS_BREACH, STATUS_EARLY, STATUS_OK, analyze_item
 
 TODAY = date(2026, 10, 16)
 

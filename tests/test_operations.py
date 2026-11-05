@@ -565,7 +565,7 @@ def test_a_database_with_the_old_combined_schema_opens_and_keeps_every_row(tmp_p
     c.execute("INSERT INTO alerts(id, item_code, kind, severity, status, created_at, updated_at, analysis_json, reasoning_text) VALUES ('a1','BOLT-M8','BREACH',3,'awaiting','2026-10-01T00:00:00+00:00','2026-10-01T00:00:00+00:00','{}','low')")
     c.commit()
     c.close()
-    from erp_agents.packs.stock_procurement.inventory.alerts import AlertRepo
+    from ai_munimji_engine.packs.stock_procurement.inventory.alerts import AlertRepo
     from erp_agents.packs.stock_procurement.stores import sqlite_stock_stores
     db = Database(path)
     repo = AlertRepo(sqlite_stock_stores(db).alerts)

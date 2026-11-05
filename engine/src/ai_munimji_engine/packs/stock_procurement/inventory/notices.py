@@ -12,7 +12,7 @@ from typing import Optional
 
 from ai_munimji_engine.stores.stock.notices import NoticeStore
 
-from erp_agents.core.common import Clock, iso, parse_dt, short_id, utcnow
+from ai_munimji_engine.core.common import Clock, iso, parse_dt, short_id, utcnow
 
 LEVELS = {"LOW": 0, "URGENT": 1}
 ACTIVE = ("sent", "acknowledged", "snoozed")

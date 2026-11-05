@@ -8,7 +8,7 @@ from typing import Any, Optional
 from ai_munimji_engine.storage import dumps, loads
 from ai_munimji_engine.stores.stock.alerts import AlertStore
 
-from erp_agents.core.common import Clock, iso, parse_dt, short_id, utcnow
+from ai_munimji_engine.core.common import Clock, iso, parse_dt, short_id, utcnow
 
 ACTIVE = ("awaiting",)
 OPEN_STATES = ("awaiting", "snoozed", "dismissed", "actioned")

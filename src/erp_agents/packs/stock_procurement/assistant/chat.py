@@ -24,14 +24,14 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Any, Callable, Optional, Sequence
 
-from erp_agents.core.common import Clock, iso, untrusted, utcnow
-from erp_agents.core.policy import AssistantSettings
+from ai_munimji_engine.core.common import Clock, iso, untrusted, utcnow
+from ai_munimji_engine.core.policy import AssistantSettings
 from erp_agents.core.resilience import Limits, RateLimited, ResilienceSettings
-from erp_agents.core.settings_store import SettingsStore
+from ai_munimji_engine.core.settings_store import SettingsStore
 from ai_munimji_engine.storage import dumps, loads
 from ai_munimji_engine.stores.stock.assistant import AssistantStore
 from ai_munimji_engine.packs.stock_procurement.erp import ItemInfo, StockProcurementERP
-from ..inventory.analysis import _d, _n, where_stock_is
+from ai_munimji_engine.packs.stock_procurement.inventory.analysis import _d, _n, where_stock_is
 from erp_agents.core.assistant.facts import Fact
 from erp_agents.core.assistant.llm import LLMClient, LLMError, OllamaClient
 from erp_agents.core.assistant.verify import NOT_ENOUGH, verify
@@ -766,7 +766,7 @@ class ChatService:
         moq = moq_of(it.code) if (moq_of and qty) else None
         if moq and qty < moq:
             return Answer("order_request", f"Your ERP does not accept an order below this item's minimum order quantity of {_n(moq)} {a.uom}. Try again with {_n(moq)} or more.", status="clarify")
-        from ..inventory.agent import on_demand_payload
+        from ai_munimji_engine.packs.stock_procurement.inventory.agent import on_demand_payload
         res = self.procurement.request_purchase(on_demand_payload(a, plan.user or "someone", qty), plan.user or "someone")
         rec, name = res.get("approval"), f"{a.item_name} ({it.code})"
         if res["status"] == "need_qty":

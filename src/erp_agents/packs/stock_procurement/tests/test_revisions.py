@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from conftest import APPROVER, OWNER
 from erp_agents.core.api.app import create_app
-from erp_agents.core.workorders import REORDER_NEEDED
+from ai_munimji_engine.core.workorders import REORDER_NEEDED
 from erp_agents.core.erp.mock import MockERP
 
 

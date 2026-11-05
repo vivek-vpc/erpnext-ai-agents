@@ -13,7 +13,7 @@ import pytest
 from conftest import OWNER, VIEWER, FakeHTTP
 from erp_agents.core.approvals.channels.whatsapp import WhatsAppChannel
 from erp_agents.core.approvals.inbound import process_inbound
-from erp_agents.core.approvals.models import InboundEvent
+from ai_munimji_engine.core.approvals.models import InboundEvent
 from ai_munimji_engine.packs.stock_procurement.erp import CountLine, ReceiptLine, SupplierContact
 from erp_agents.core.erp.mock import MockERP
 from conftest import table_rows
@@ -511,7 +511,7 @@ def test_changing_the_follow_up_times_in_settings_reschedules_at_once(api):
 
 
 def test_the_vendor_chosen_from_a_comparison_stays_chosen_even_when_the_usual_ranking_prefers_another(app):
-    from erp_agents.packs.stock_procurement.inventory.agent import on_demand_payload
+    from ai_munimji_engine.packs.stock_procurement.inventory.agent import on_demand_payload
     a, _ = app.inventory.analyze_one("RELAY-12V")
     usual = app.procurement.preview("RELAY-12V", 100, a.cover_days_on_hand, a.lead_time_days)
     best = next(v["supplier"] for v in usual["vendors"] if v["eligible"])

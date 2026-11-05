@@ -19,13 +19,13 @@ from zoneinfo import ZoneInfo
 from ai_munimji_engine.storage import dumps
 from ai_munimji_engine.stores.stock import StockStores
 
-from erp_agents.core.approvals.models import ApprovalRecord, Decision
-from erp_agents.core.approvals.render import render_plain
-from erp_agents.core.approvals.service import ApprovalService, KindHandler
-from erp_agents.core.common import Clock, iso, short_id, utcnow
+from ai_munimji_engine.core.approvals.models import ApprovalRecord, Decision
+from ai_munimji_engine.core.approvals.render import render_plain
+from ai_munimji_engine.core.approvals.service import ApprovalService, KindHandler
+from ai_munimji_engine.core.common import Clock, iso, short_id, utcnow
 from ..settings import Policy
-from erp_agents.core.settings_store import SettingsError, SettingsStore
-from erp_agents.core.workorders import REORDER_NEEDED, WorkOrderQueue
+from ai_munimji_engine.core.settings_store import SettingsError, SettingsStore
+from ai_munimji_engine.core.workorders import REORDER_NEEDED, WorkOrderQueue
 from ai_munimji_engine.packs.stock_procurement.erp import ItemInfo, StockProcurementERP
 from .alerts import Alert, AlertRepo
 from .events import Window, active_windows

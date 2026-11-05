@@ -13,13 +13,13 @@ import logging
 import math
 from typing import Any, Optional
 
-from erp_agents.core import acting
-from erp_agents.core.approvals.models import ApprovalRecord, Decision, DecisionRefused
-from erp_agents.core.approvals.service import KindHandler, parse_approver
-from erp_agents.core.common import iso, short_id, untrusted
+from ai_munimji_engine.core import acting
+from ai_munimji_engine.core.approvals.models import ApprovalRecord, Decision, DecisionRefused
+from ai_munimji_engine.core.approvals.service import KindHandler, parse_approver
+from ai_munimji_engine.core.common import iso, short_id, untrusted
 from ai_munimji_engine.packs.stock_procurement.erp import StockTransferDraft
-from .analysis import _n, where_stock_is
-from .messages import KIND_TRANSFER, build_transfer_request
+from ai_munimji_engine.packs.stock_procurement.inventory.analysis import _n, where_stock_is
+from ai_munimji_engine.packs.stock_procurement.inventory.messages import KIND_TRANSFER, build_transfer_request
 
 log = logging.getLogger(__name__)
 OPEN = ("proposed",)

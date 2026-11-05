@@ -11,9 +11,9 @@ import logging
 from datetime import date, timedelta
 from typing import Any, Optional
 
-from erp_agents.core.approvals.models import ApprovalRecord, Decision, DecisionRefused
-from erp_agents.core.approvals.service import KindHandler
-from erp_agents.core.common import iso, parse_dt, untrusted
+from ai_munimji_engine.core.approvals.models import ApprovalRecord, Decision, DecisionRefused
+from ai_munimji_engine.core.approvals.service import KindHandler
+from ai_munimji_engine.core.common import iso, parse_dt, untrusted
 from .messages import KIND_CHASE, build_chase_request, fill
 from .vendors import VendorMessenger
 

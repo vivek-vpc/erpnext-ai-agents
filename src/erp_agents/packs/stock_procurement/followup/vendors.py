@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any, Optional
 
-from erp_agents.core.common import iso, short_id, untrusted
+from ai_munimji_engine.core.common import iso, short_id, untrusted
 from erp_agents.core.config import HASH_KEY_ENV, hash_key
 
 log = logging.getLogger(__name__)

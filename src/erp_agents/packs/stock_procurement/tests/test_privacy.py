@@ -7,10 +7,10 @@ pytest.importorskip("mcp", reason="the optional 'agents' extra is not installed"
 
 from conftest import APPROVER, OWNER, VIEWER
 from erp_agents.core.agents.privacy import KEPT, NEVER_SENT, privacy_summary
-from erp_agents.core.common import Actor
-from erp_agents.core.policy import AgentSettings
+from ai_munimji_engine.core.common import Actor
+from ai_munimji_engine.core.policy import AgentSettings
 from erp_agents.core.erp.mock import MockERP
-from erp_agents.core.packs import PackRegistry
+from ai_munimji_engine.core.packs import PackRegistry
 from test_agents import done, good_brief, say, use, with_model
 
 SENT = list(PackRegistry.discover().manifests["stock_procurement"].sends_to_model)        # what the stock pack declares its agents may send; the core adds nothing of its own

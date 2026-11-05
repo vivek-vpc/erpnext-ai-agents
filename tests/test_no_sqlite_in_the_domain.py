@@ -90,8 +90,8 @@ def test_every_module_that_is_not_about_sqlite_imports_without_it(results):
     assert not stale, "these modules no longer need SQLite: take them off the list: " + ", ".join(stale)
 
 
-@pytest.mark.parametrize("name", ["erp_agents.packs.stock_procurement.tools", "erp_agents.core.toolkit", "erp_agents.core.approvals.service", "erp_agents.core.audit",
-                                  "erp_agents.packs.stock_procurement.inventory.agent", "erp_agents.packs.stock_procurement.procurement.agent",
+@pytest.mark.parametrize("name", ["ai_munimji_engine.packs.stock_procurement.tools", "ai_munimji_engine.core.toolkit", "ai_munimji_engine.core.approvals.service", "ai_munimji_engine.core.audit",
+                                  "ai_munimji_engine.packs.stock_procurement.inventory.agent", "ai_munimji_engine.packs.stock_procurement.procurement.agent",
                                   "ai_munimji_engine.stores", "ai_munimji_engine.stores.stock"])
 def test_the_tool_registry_and_the_services_it_stands_on_import_without_sqlite(results, name):
     assert results[name] == "OK"

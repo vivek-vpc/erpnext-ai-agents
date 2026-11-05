@@ -9,9 +9,9 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from erp_agents.core.approvals.models import Section
-from erp_agents.core.common import untrusted
-from .analysis import STATUS_BREACH, Analysis, _n
+from ai_munimji_engine.core.approvals.models import Section
+from ai_munimji_engine.core.common import untrusted
+from ai_munimji_engine.packs.stock_procurement.inventory.analysis import STATUS_BREACH, Analysis, _n
 
 log = logging.getLogger(__name__)
 MAX_ALTERNATIVES = 5

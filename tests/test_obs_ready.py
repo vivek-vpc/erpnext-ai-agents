@@ -10,10 +10,10 @@ import pytest
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_MISSED, EVENT_JOB_SUBMITTED
 from fastapi.testclient import TestClient
 
-from erp_agents.core import metrics, obs
+from ai_munimji_engine.core import metrics, obs
 from erp_agents.core.api.app import create_app
 from erp_agents.core.erp.mock import MockERP
-from erp_agents.core.jobs import HEARTBEAT_STALE_MINUTES, MAINTENANCE_JOB, JobLog
+from ai_munimji_engine.core.jobs import HEARTBEAT_STALE_MINUTES, MAINTENANCE_JOB, JobLog
 from erp_agents.core.scheduler import AgentScheduler
 from conftest import storage_kind
 from erp_agents.stores import build_core_stores

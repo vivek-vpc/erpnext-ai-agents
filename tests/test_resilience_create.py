@@ -7,7 +7,7 @@ import pytest
 
 from conftest import OWNER
 from ai_munimji_engine.packs.stock_procurement.erp import PurchaseOrderDraft, RequisitionDraft, StockTransferDraft
-from erp_agents.core.workorders import REORDER_NEEDED
+from ai_munimji_engine.core.workorders import REORDER_NEEDED
 from fake_erpnext import FakeERPNext, HybridERP, rest_client
 from test_procurement import three, wo_payload
 

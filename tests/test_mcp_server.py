@@ -12,7 +12,7 @@ from conftest import APPROVER, VIEWER
 from erp_agents.core.api.app import create_app
 from erp_agents.core.erp.mock import MockERP
 from erp_agents.core.mcp_server import build_mcp_server
-from erp_agents.packs.stock_procurement.tools import SPEC, TOOLS
+from ai_munimji_engine.packs.stock_procurement.tools import SPEC, TOOLS
 from mcp import Client
 
 TOKENS = [{"token": "v" * 40, "user": "viewer", "roles": ["viewer"]}, {"token": "o" * 40, "user": "owner", "roles": ["viewer", "approver", "admin"]}]

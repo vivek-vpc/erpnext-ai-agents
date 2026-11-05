@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 
 from conftest import OWNER, FakeHTTP
 from erp_agents.core.api.app import create_app
-from erp_agents.core.approvals.channels.base import decode_action, encode_action
+from ai_munimji_engine.core.approvals.channels.base import decode_action, encode_action
 from erp_agents.core.approvals.channels.registry import build_channels
 from erp_agents.core.approvals.channels.simple import InboxChannel
 from erp_agents.core.approvals.channels.telegram import REPLY_EVERY, TelegramChannel

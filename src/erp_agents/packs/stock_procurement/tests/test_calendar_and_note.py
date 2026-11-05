@@ -8,16 +8,16 @@ from fastapi.testclient import TestClient
 from conftest import APPROVER, OWNER
 from erp_agents.core.api.app import create_app
 from erp_agents.core.assistant.facts import build_facts
-from erp_agents.packs.stock_procurement.settings import CalendarEvent, CalendarSettings, Policy, ProcurementSettings
-from erp_agents.core.settings_store import SettingsError
-from erp_agents.core.workorders import REORDER_NEEDED
+from ai_munimji_engine.packs.stock_procurement.settings import CalendarEvent, CalendarSettings, Policy, ProcurementSettings
+from ai_munimji_engine.core.settings_store import SettingsError
+from ai_munimji_engine.core.workorders import REORDER_NEEDED
 from ai_munimji_engine.packs.stock_procurement.erp import PurchaseOrderDraft, VendorOffer
 from erp_agents.core.erp.erpnext import ERPNextClient
 from erp_agents.core.erp.mock import MockERP
-from erp_agents.packs.stock_procurement.inventory.analysis import STATUS_BREACH, STATUS_EARLY, STATUS_OK, analyze_item
-from erp_agents.packs.stock_procurement.inventory.events import Window, active_windows, days_until_demand, describe, factor_on, total_demand
-from erp_agents.packs.stock_procurement.procurement.messages import vendor_note_for
-from erp_agents.packs.stock_procurement.procurement.scoring import Need, rank_vendors
+from ai_munimji_engine.packs.stock_procurement.inventory.analysis import STATUS_BREACH, STATUS_EARLY, STATUS_OK, analyze_item
+from ai_munimji_engine.packs.stock_procurement.inventory.events import Window, active_windows, days_until_demand, describe, factor_on, total_demand
+from ai_munimji_engine.packs.stock_procurement.procurement.messages import vendor_note_for
+from ai_munimji_engine.packs.stock_procurement.procurement.scoring import Need, rank_vendors
 
 TODAY = date(2026, 10, 16)
 

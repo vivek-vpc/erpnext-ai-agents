@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional
 
-from .jobs import HEARTBEAT_STALE_MINUTES, MAINTENANCE_JOB
+from ai_munimji_engine.core.jobs import HEARTBEAT_STALE_MINUTES, MAINTENANCE_JOB
 
 
 @dataclass(frozen=True)

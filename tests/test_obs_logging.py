@@ -10,7 +10,8 @@ import threading
 import anyio
 import pytest
 
-from erp_agents.core import cli, obs
+from erp_agents.core import cli
+from ai_munimji_engine.core import obs
 from erp_agents.core.bootstrap import StartupRefused, build_app
 
 

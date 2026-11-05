@@ -25,13 +25,13 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from erp_agents.core.api.app import create_app
-from erp_agents.core.approvals.channels.base import encode_action
+from ai_munimji_engine.core.approvals.channels.base import encode_action
 from erp_agents.core.approvals.channels.simple import InboxChannel
 from erp_agents.core.approvals.channels.telegram import TelegramChannel
 from erp_agents.core.approvals.channels.whatsapp import WhatsAppChannel
 from erp_agents.core.bootstrap import build_app
 from erp_agents.core.config import load_config
-from erp_agents.core.common import Actor
+from ai_munimji_engine.core.common import Actor
 from erp_agents.core.erp.erpnext import ERPNextClient, ERPNextError
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -302,7 +302,7 @@ def main() -> int:
     @case("AUTH-02", "P1", "The service account holds only what the app needs")
     def _():
         from erp_agents.core.auth.access import check_service_account
-        from erp_agents.core.packs import PackRegistry
+        from ai_munimji_engine.core.packs import PackRegistry
         r = check_service_account(erp.session, base_cfg["erp"]["url"], list(PackRegistry.discover().manifests["stock_procurement"].erp_permissions))
         assert not r.missing, f"it lacks access the app needs: {r.missing}"
         assert not r.risky_held, (f"the service account '{r.user}' holds {len(r.surplus)} roles it does not need, including high-risk ones ({', '.join(r.risky_held)}); "
@@ -914,7 +914,7 @@ def main() -> int:
         no_qty["procurement"]["fallback_qty"] = None
         a, h, clk = make_app(cfg=no_qty)
         c = TestClient(create_app(a))
-        from erp_agents.core.workorders import REORDER_NEEDED
+        from ai_munimji_engine.core.workorders import REORDER_NEEDED
         a.workorders.emit(REORDER_NEEDED, {"item_code": "FAS-0002", "item_name": "x", "item_group": "Fasteners & Hardware", "uom": "Nos", "suggested_qty": 500.0,
                                            "cover_days": 10.0, "lead_time_days": 5.0, "daily_rate": 20.0, "on_hand": 10.0, "severity": "HIGH", "reasons": ["Low."]})
         a.workorders.emit(REORDER_NEEDED, {"item_code": "FAS-0001", "item_name": "y", "item_group": "Fasteners & Hardware", "uom": "Nos", "suggested_qty": None,
@@ -1056,7 +1056,7 @@ def main() -> int:
         bad = NoTax(base_cfg["erp"]["url"], base_cfg["erp"]["api_key"], base_cfg["erp"]["api_secret"], company=COMPANY)
         a, h, clk = make_app(erp=bad)
         c = TestClient(create_app(a))
-        from erp_agents.core.workorders import REORDER_NEEDED
+        from ai_munimji_engine.core.workorders import REORDER_NEEDED
         a.workorders.emit(REORDER_NEEDED, {"item_code": ITEM, "item_name": "Hex Bolt", "item_group": "Fasteners & Hardware", "uom": "Nos", "suggested_qty": 500.0,
                                            "cover_days": 10.0, "lead_time_days": 5.0, "daily_rate": 20.0, "on_hand": 10.0, "severity": "HIGH", "reasons": ["Low."]})
         a.procurement.run()
@@ -1228,7 +1228,7 @@ def main() -> int:
 
     @case("QT-02", "P0", "Supplier quotations end to end: the request names the quotation, and the draft Purchase Order in ERPNext carries its number")
     def _():
-        from erp_agents.core.workorders import REORDER_NEEDED
+        from ai_munimji_engine.core.workorders import REORDER_NEEDED
         a, h, clk = make_app()
         today = date.today()
         q = temp_quotation("Mumbai Metal Traders", 12.0, today, today + timedelta(days=10), "flow")

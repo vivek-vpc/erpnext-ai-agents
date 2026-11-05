@@ -10,7 +10,7 @@ from conftest import OWNER, VIEWER
 from erp_agents.core.api.app import create_app
 from erp_agents.core.cli import main
 from erp_agents.core.erp.mock import MockERP
-from erp_agents.core.packs import PackError, PackRegistry
+from ai_munimji_engine.core.packs import PackError, PackRegistry
 from erp_agents.core.scheduler import AgentScheduler
 
 TOKENS = [{"token": "o" * 40, "user": "owner", "roles": ["viewer", "approver", "admin"]}]

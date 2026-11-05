@@ -8,7 +8,7 @@ import logging
 import pytest
 from pydantic import ValidationError
 
-from erp_agents.packs.stock_procurement.settings import CHASE_FIELDS, QUOTE_FIELDS, VENDOR_NOTE_FIELDS, FollowUpSettings, ProcurementSettings
+from ai_munimji_engine.packs.stock_procurement.settings import CHASE_FIELDS, QUOTE_FIELDS, VENDOR_NOTE_FIELDS, FollowUpSettings, ProcurementSettings
 
 CASES = [(FollowUpSettings, "chase_message", CHASE_FIELDS), (FollowUpSettings, "quote_message", QUOTE_FIELDS), (ProcurementSettings, "vendor_note_template", VENDOR_NOTE_FIELDS)]
 NOT_A_PLAIN_PLACEHOLDER = ["{%s.__class__}", "{%s.__class__.__mro__}", "{%s[0]}", "{%s!r}", "{%s:>10}", "{%s.__len__}", "{ %s }", "{%s", "%s}", "{}", "{0}", "{nosuchfield}"]
@@ -33,7 +33,7 @@ def test_the_default_templates_are_accepted(model, field):
 
 
 def test_the_replacer_follows_nothing_but_a_name():
-    from erp_agents.packs.stock_procurement.templating import TemplateError, check_template, fill_template
+    from ai_munimji_engine.packs.stock_procurement.templating import TemplateError, check_template, fill_template
 
     values = {"vendor": "Prime Supplies", "qty": 5}
     assert fill_template("Dear {vendor}, {qty} {{x}} {vendor}", values) == "Dear Prime Supplies, 5 {x} Prime Supplies"
@@ -45,7 +45,7 @@ def test_the_replacer_follows_nothing_but_a_name():
 
 
 def test_a_value_is_never_looked_into_even_if_it_looks_like_a_placeholder():
-    from erp_agents.packs.stock_procurement.templating import fill_template
+    from ai_munimji_engine.packs.stock_procurement.templating import fill_template
 
     assert fill_template("Reference {reference}", {"reference": "{vendor.__class__}"}) == "Reference {vendor.__class__}"        # a vendor's or item's own text is just text
 

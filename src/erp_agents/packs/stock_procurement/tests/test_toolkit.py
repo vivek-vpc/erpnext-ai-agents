@@ -4,10 +4,10 @@ import json
 import pytest
 
 from conftest import APPROVER, OWNER, VIEWER
-from erp_agents.core.common import Actor
+from ai_munimji_engine.core.common import Actor
 from erp_agents.core.erp.mock import MockERP
-from erp_agents.packs.stock_procurement.tools import SPEC, TOOLS
-from erp_agents.core.toolkit import coerce_arguments
+from ai_munimji_engine.packs.stock_procurement.tools import SPEC, TOOLS
+from ai_munimji_engine.core.toolkit import coerce_arguments
 
 
 @pytest.fixture
@@ -146,7 +146,7 @@ def test_open_orders_show_ordered_received_and_still_to_come(kit):
 
 def test_a_long_result_is_cut_and_says_so(make_app, clock, monkeypatch):
     app = make_app(erp=MockERP(today=clock().date()))
-    import erp_agents.core.toolkit as tk
+    import ai_munimji_engine.core.toolkit as tk
     monkeypatch.setattr(tk, "MAX_RESULT_CHARS", 900)
     r = app.toolkit.call("stock_overview", {"limit": 25}, VIEWER)
     assert r.get("warning") == "result shortened" and 1 <= len(r["items"]) < r["needing_attention"] + 1
@@ -166,6 +166,6 @@ def test_every_call_is_logged_with_who_how_and_whether_it_worked(kit):
 def test_the_toolkit_works_without_the_optional_mcp_package():
     import subprocess
     import sys
-    code = "import sys; sys.modules['mcp'] = None; import erp_agents.core.toolkit, erp_agents.core.bootstrap; print('ok')"
+    code = "import sys; sys.modules['mcp'] = None; import ai_munimji_engine.core.toolkit, erp_agents.core.bootstrap; print('ok')"
     out = subprocess.run([sys.executable, "-I", "-c", code], capture_output=True, text=True)
     assert out.stdout.strip() == "ok", out.stderr[-400:]

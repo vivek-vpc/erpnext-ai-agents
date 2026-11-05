@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 
 from conftest import OWNER, VIEWER
 from erp_agents.core.api.app import create_app
-from erp_agents.core.common import Actor
+from ai_munimji_engine.core.common import Actor
 from erp_agents.core.erp.mock import MockERP
 from conftest import tamper, remove_rows
 

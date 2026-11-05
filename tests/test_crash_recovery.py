@@ -13,9 +13,9 @@ from erp_agents.core.approvals.channels.simple import InboxChannel
 from erp_agents.core.approvals.channels.telegram import TelegramChannel
 from erp_agents.core.approvals.channels.whatsapp import WhatsAppChannel
 from erp_agents.core.approvals.inbound import process_inbound
-from erp_agents.core.approvals.models import InboundEvent
+from ai_munimji_engine.core.approvals.models import InboundEvent
 from erp_agents.core.scheduler import AgentScheduler
-from erp_agents.core.workorders import REORDER_NEEDED
+from ai_munimji_engine.core.workorders import REORDER_NEEDED
 from fake_erpnext import FakeERPNext, HybridERP
 from test_procurement import three, wo_payload
 
@@ -118,7 +118,7 @@ def test_the_approvers_are_told_what_happened_once(make_app, clock, db_path):
 
 
 def test_it_is_one_log_line_and_one_count_and_a_second_pass_adds_nothing(make_app, clock, db_path, caplog):
-    from erp_agents.core import metrics
+    from ai_munimji_engine.core import metrics
     metrics.REGISTRY.reset()
     caplog.set_level(logging.INFO, logger="erp_agents.calls")
     try:
@@ -261,7 +261,7 @@ def test_the_housekeeping_job_runs_the_recovery_first(make_app, clock, db_path):
 
 def test_serve_runs_the_recovery_before_the_scheduler_starts(tmp_path, monkeypatch):
     import erp_agents.core.cli as cli
-    from erp_agents.core.approvals.service import ApprovalService
+    from ai_munimji_engine.core.approvals.service import ApprovalService
     calls = []
     monkeypatch.setattr(ApprovalService, "reconcile_pending", lambda self: calls.append(1) or [])
     monkeypatch.setattr("uvicorn.run", lambda *a, **k: calls.append("serving"))
@@ -273,7 +273,7 @@ def test_serve_runs_the_recovery_before_the_scheduler_starts(tmp_path, monkeypat
 
 # ------------------------------------------------------------------ the pieces
 def generic(kind="test.thing"):
-    from erp_agents.core.approvals.models import ApprovalOption, ApprovalRequest, Section
+    from ai_munimji_engine.core.approvals.models import ApprovalOption, ApprovalRequest, Section
     return ApprovalRequest(kind=kind, title="Do the thing", headline="Please decide", severity="HIGH", sections=[Section(heading="Why", lines=["because"])],
                            options=[ApprovalOption(action="yes", label="Yes", style="primary"), ApprovalOption(action="no", label="No")])
 
@@ -282,13 +282,13 @@ def generic(kind="test.thing"):
                                             ("  owner   via   whatsapp ", ("owner", "whatsapp")), ("a via b via c", ("a via b", "c")),
                                             ("", None), (None, None), ("owner", None), ("via telegram", None), ("owner via ", None), ("owner via " + "x" * 80, None)])
 def test_the_approver_written_on_a_document_is_read_back(text, expected):
-    from erp_agents.core.approvals.service import parse_approver
+    from ai_munimji_engine.core.approvals.service import parse_approver
     assert parse_approver(text) == expected
 
 
 def test_a_kind_decides_what_was_answered_and_a_kind_without_the_hook_is_left_alone(make_app):
-    from erp_agents.core.approvals.models import Decision
-    from erp_agents.core.approvals.service import KindHandler
+    from ai_munimji_engine.core.approvals.models import Decision
+    from ai_munimji_engine.core.approvals.service import KindHandler
     app = make_app()
     seen = []
     app.approvals.register_handler("test.fixed", KindHandler(on_decision=lambda rec, d: seen.append((rec.id, d.action, d.actor_id, d.params)),
@@ -300,8 +300,8 @@ def test_a_kind_decides_what_was_answered_and_a_kind_without_the_hook_is_left_al
 
 
 def test_a_hook_that_fails_does_not_stop_the_others_and_complains_once(make_app, caplog):
-    from erp_agents.core.approvals.models import Decision
-    from erp_agents.core.approvals.service import KindHandler
+    from ai_munimji_engine.core.approvals.models import Decision
+    from ai_munimji_engine.core.approvals.service import KindHandler
     app = make_app()
 
     def broken(rec):
@@ -317,8 +317,8 @@ def test_a_hook_that_fails_does_not_stop_the_others_and_complains_once(make_app,
 
 
 def test_an_answer_the_kind_refuses_leaves_the_request_waiting_and_says_why(make_app, caplog):
-    from erp_agents.core.approvals.models import Decision, DecisionRefused
-    from erp_agents.core.approvals.service import KindHandler
+    from ai_munimji_engine.core.approvals.models import Decision, DecisionRefused
+    from ai_munimji_engine.core.approvals.service import KindHandler
 
     def refuse(rec, decision):
         raise DecisionRefused("this cannot be applied")

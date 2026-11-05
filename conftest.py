@@ -8,9 +8,9 @@ import pytest
 from erp_agents.core.bootstrap import build_app
 from erp_agents.stores import BACKENDS, build_core_stores
 from erp_agents.core.config import DEFAULT_CONFIG
-from erp_agents.core.common import Actor
+from ai_munimji_engine.core.common import Actor
 
-from erp_agents.core.packs import PackRegistry
+from ai_munimji_engine.core.packs import PackRegistry
 
 STOCK_NEEDS = list(PackRegistry.discover().manifests["stock_procurement"].erp_permissions)           # what the stock pack says the ERPNext service account must hold
 OWNER = Actor("owner", frozenset({"admin", "approver"}), "test")

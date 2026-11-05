@@ -10,9 +10,9 @@ from pathlib import Path
 import pytest
 
 from erp_agents.core import doctor
-from erp_agents.core.audit import AuditChain
-from erp_agents.core.common import iso
-from erp_agents.core.jobs import MAINTENANCE_JOB, JobLog
+from ai_munimji_engine.core.audit import AuditChain
+from ai_munimji_engine.core.common import iso
+from ai_munimji_engine.core.jobs import MAINTENANCE_JOB, JobLog
 from erp_agents.core.ops import InstanceLock
 from erp_agents.core.storage import Database
 from erp_agents.stores.sqlite_core import SqliteAuditStore, SqliteJobRunStore

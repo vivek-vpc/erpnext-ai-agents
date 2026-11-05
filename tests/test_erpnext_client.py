@@ -474,9 +474,9 @@ def test_usage_of_a_migrated_item_is_measured_over_its_real_history_not_its_crea
     """The whole point: a year of sales on an item created last week must not look like 'no recent consumption'."""
     from datetime import timedelta
 
-    from erp_agents.packs.stock_procurement.settings import Policy
+    from ai_munimji_engine.packs.stock_procurement.settings import Policy
     from ai_munimji_engine.packs.stock_procurement.erp import DailyUsage, ItemInfo
-    from erp_agents.packs.stock_procurement.inventory.analysis import compute_usage
+    from ai_munimji_engine.packs.stock_procurement.inventory.analysis import compute_usage
     today = date(2026, 10, 20)
     sales = [DailyUsage(today - timedelta(days=d), 10.0) for d in range(3, 80)]            # 10 a day for the last 80 days, none in the last 3
     blind = compute_usage(sales, ItemInfo("X", "X", created=date(2026, 10, 17)), today, Policy())

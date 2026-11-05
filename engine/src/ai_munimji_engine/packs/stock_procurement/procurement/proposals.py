@@ -8,7 +8,7 @@ from typing import Any, Optional
 from ai_munimji_engine.storage import dumps, loads
 from ai_munimji_engine.stores.stock.proposals import ProposalStore
 
-from erp_agents.core.common import Clock, iso, parse_dt, short_id, utcnow
+from ai_munimji_engine.core.common import Clock, iso, parse_dt, short_id, utcnow
 
 OPEN_STATUSES = ("awaiting", "manual")      # a request is out and unanswered: do not ask again for the same item
 

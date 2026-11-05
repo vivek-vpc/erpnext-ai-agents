@@ -9,14 +9,14 @@ from fastapi.testclient import TestClient
 from conftest import APPROVER, OWNER
 from erp_agents.core.api.app import create_app
 from erp_agents.core.assistant.facts import build_facts
-from erp_agents.packs.stock_procurement.settings import ProcurementSettings
-from erp_agents.core.workorders import REORDER_NEEDED
+from ai_munimji_engine.packs.stock_procurement.settings import ProcurementSettings
+from ai_munimji_engine.core.workorders import REORDER_NEEDED
 from ai_munimji_engine.packs.stock_procurement.erp import PurchaseOrderDraft, TaxRow, TaxSetup, VendorOffer
 from erp_agents.core.erp.erpnext import ERPNextClient
 from erp_agents.core.erp.mock import MockERP
-from erp_agents.packs.stock_procurement.procurement import taxes
-from erp_agents.packs.stock_procurement.procurement.messages import build_po_request
-from erp_agents.packs.stock_procurement.procurement.scoring import Need, rank_vendors
+from ai_munimji_engine.packs.stock_procurement.procurement import taxes
+from ai_munimji_engine.packs.stock_procurement.procurement.messages import build_po_request
+from ai_munimji_engine.packs.stock_procurement.procurement.scoring import Need, rank_vendors
 
 TODAY = date(2026, 10, 16)
 

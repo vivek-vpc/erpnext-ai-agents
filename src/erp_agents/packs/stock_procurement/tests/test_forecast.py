@@ -4,9 +4,9 @@ from datetime import timedelta
 from conftest import OWNER
 from ai_munimji_engine.packs.stock_procurement.erp import SalesDue
 from erp_agents.core.erp.mock import MockERP
-from erp_agents.packs.stock_procurement.inventory.analysis import STATUS_BREACH, analyze_item
-from erp_agents.packs.stock_procurement.inventory.forecast import forecast_reorder_point
-from erp_agents.packs.stock_procurement.settings import Policy
+from ai_munimji_engine.packs.stock_procurement.inventory.analysis import STATUS_BREACH, analyze_item
+from ai_munimji_engine.packs.stock_procurement.inventory.forecast import forecast_reorder_point
+from ai_munimji_engine.packs.stock_procurement.settings import Policy
 
 
 def seasonal_erp(clock, peak=30.0):

@@ -1,10 +1,10 @@
 """The channel-independent approval workflow: one decision, safe retries, multi-channel delivery."""
 import pytest
 
-from erp_agents.core.approvals.channels.base import Channel
-from erp_agents.core.approvals.models import ApprovalOption, ApprovalRequest, DeliveryResult, Recipient, RecipientChannel, Section
-from erp_agents.core.approvals.router import ApprovalRouter
-from erp_agents.core.approvals.service import ApprovalService, KindHandler
+from ai_munimji_engine.core.approvals.channels.base import Channel
+from ai_munimji_engine.core.approvals.models import ApprovalOption, ApprovalRequest, DeliveryResult, Recipient, RecipientChannel, Section
+from ai_munimji_engine.core.approvals.router import ApprovalRouter
+from ai_munimji_engine.core.approvals.service import ApprovalService, KindHandler
 from erp_agents.stores import build_core_stores
 
 from conftest import APPROVER, OWNER, VIEWER, storage_kind

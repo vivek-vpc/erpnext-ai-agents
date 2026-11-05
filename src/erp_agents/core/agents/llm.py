@@ -22,11 +22,12 @@ from urllib.parse import urlparse
 
 import requests
 
-from .. import obs, resilience
+from .. import resilience
+from ai_munimji_engine.core import obs
 from ..assistant.llm import SEED, LLMError
 from ..httpguard import guard_session
 from ..netguard import no_redirects
-from ..policy import LOCAL_HOSTS, PROVIDER_LABELS, PROVIDER_URLS, AgentSettings
+from ai_munimji_engine.core.policy import LOCAL_HOSTS, PROVIDER_LABELS, PROVIDER_URLS, AgentSettings
 from ..prompting import CLOSE, OPEN, clean
 
 __all__ = ["LLMError", "Reply", "ToolChatClient", "OllamaToolClient", "OpenAIToolClient", "AnthropicToolClient", "GeminiToolClient", "make_client", "describe", "is_remote",

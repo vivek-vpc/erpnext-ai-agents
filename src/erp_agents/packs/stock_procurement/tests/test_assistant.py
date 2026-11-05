@@ -8,9 +8,9 @@ from conftest import APPROVER, OWNER, FakeResponse
 from erp_agents.core.api.app import create_app
 from erp_agents.core.assistant.llm import LLMError, OllamaClient
 from erp_agents.core.assistant.verify import NOT_ENOUGH
-from erp_agents.core.policy import AssistantSettings
-from erp_agents.core.settings_store import SettingsError
-from erp_agents.core.workorders import REORDER_NEEDED
+from ai_munimji_engine.core.policy import AssistantSettings
+from ai_munimji_engine.core.settings_store import SettingsError
+from ai_munimji_engine.core.workorders import REORDER_NEEDED
 from erp_agents.core.erp.mock import MockERP
 
 

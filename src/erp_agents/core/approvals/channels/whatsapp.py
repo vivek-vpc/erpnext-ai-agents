@@ -25,9 +25,9 @@ from typing import Any, Mapping, Optional
 import requests
 
 from ...netguard import no_redirects
-from ..models import ApprovalRecord, ApprovalRequest, DeliveryResult, InboundEvent
-from ..render import render_whatsapp, truncate
-from .base import Channel, decode_action, encode_action, safe_equals
+from ai_munimji_engine.core.approvals.models import ApprovalRecord, ApprovalRequest, DeliveryResult, InboundEvent
+from ai_munimji_engine.core.approvals.render import render_whatsapp, truncate
+from ai_munimji_engine.core.approvals.channels.base import Channel, decode_action, encode_action, safe_equals
 
 log = logging.getLogger(__name__)
 MAX_TEXT = 3800          # text message limit is 4096

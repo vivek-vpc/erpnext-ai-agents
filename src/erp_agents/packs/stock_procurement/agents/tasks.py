@@ -12,11 +12,11 @@ from typing import Any, Optional
 
 from erp_agents.core.agents.runtime import Evidence, Outcome
 from erp_agents.core.agents.service import BUSY, Plan
-from erp_agents.core.approvals.models import ApprovalRecord
+from ai_munimji_engine.core.approvals.models import ApprovalRecord
 from erp_agents.core.assistant.verify import NOT_ENOUGH
-from erp_agents.core.common import Actor, untrusted
+from ai_munimji_engine.core.common import Actor, untrusted
 from ..assistant.chat import MAX_CHAT_QUESTION
-from ..procurement.agent import KIND_PO, KIND_PR
+from ai_munimji_engine.packs.stock_procurement.procurement.agent import KIND_PO, KIND_PR
 from . import inventory_agent as inventory
 from . import purchase_agent as purchasing
 

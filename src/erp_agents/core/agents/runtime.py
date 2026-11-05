@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Any, Callable, Optional
 
 import anyio
 
-from .. import metrics, obs, tracing
+from ai_munimji_engine.core import metrics, obs, tracing
 from ..assistant.verify import HEDGES, _contains, numbers
 from ..prompting import DATA_RULE, clean, clean_json, unfence
 from .llm import LLMError, Reply, ToolChatClient, salvage_tool_call

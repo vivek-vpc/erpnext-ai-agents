@@ -10,7 +10,7 @@ from erp_agents.core.api.app import create_app
 from erp_agents.core.approvals.channels.simple import InboxChannel
 from erp_agents.core.approvals.channels.whatsapp import WhatsAppChannel
 from erp_agents.core.erp.mock import MockERP
-from erp_agents.packs.stock_procurement.inventory.messages import KIND_ALERT
+from ai_munimji_engine.packs.stock_procurement.inventory.messages import KIND_ALERT
 
 
 @pytest.fixture

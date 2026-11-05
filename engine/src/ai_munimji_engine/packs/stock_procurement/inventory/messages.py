@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Optional
 
-from erp_agents.core.approvals.models import ACTION_DETAILS, ApprovalOption, ApprovalRequest, Section
+from ai_munimji_engine.core.approvals.models import ACTION_DETAILS, ApprovalOption, ApprovalRequest, Section
 from ai_munimji_engine.packs.stock_procurement.erp import ItemInfo, column_phrase
 from .analysis import SEV_CRITICAL, SEV_NAMES, STATUS_BREACH, STATUS_EARLY, Analysis, _d, _n, where_stock_is
 from .events import describe

@@ -16,7 +16,7 @@ from erp_agents.core.agents.llm import AnthropicToolClient, GeminiToolClient, LL
 from erp_agents.core.agents.runtime import AgentRuntime
 from erp_agents.core.agents.usage import estimated_cost
 from erp_agents.core.config import LLM_KEY_ENV, llm_key_sources_from_env, llm_keys_from_env, load_config, with_secrets
-from erp_agents.core.policy import PROVIDER_MODELS, PROVIDER_URLS, AgentSettings
+from ai_munimji_engine.core.policy import PROVIDER_MODELS, PROVIDER_URLS, AgentSettings
 from erp_agents.core.storage import Database
 from erp_agents.core.erp.mock import MockERP
 from test_agents import FakeToolLLM, overview, say, use, with_model

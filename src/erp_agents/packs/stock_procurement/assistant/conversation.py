@@ -19,9 +19,9 @@ from typing import Any, Callable, Optional
 
 from ai_munimji_engine.runtime import Awaiting, ConversationMemory, InlineJobRunner, InProcessConversationMemory, ItemContext, JobRunner, PoolJobRunner
 
-from erp_agents.core.approvals.channels.base import Channel
-from erp_agents.core.approvals.models import DecisionResult, InboundEvent, Recipient
-from erp_agents.core.approvals.router import ApprovalRouter
+from ai_munimji_engine.core.approvals.channels.base import Channel
+from ai_munimji_engine.core.approvals.models import DecisionResult, InboundEvent, Recipient
+from ai_munimji_engine.core.approvals.router import ApprovalRouter
 from erp_agents.core.resilience import Limits, RateLimited, ResilienceSettings
 from .chat import ChatLimit
 

@@ -16,13 +16,13 @@ import logging
 from datetime import date, timedelta
 from typing import Any, Optional
 
-from erp_agents.core.approvals.models import ApprovalRecord, Decision, DecisionRefused
-from erp_agents.core.approvals.service import KindHandler
-from erp_agents.core.common import iso, short_id, untrusted
+from ai_munimji_engine.core.approvals.models import ApprovalRecord, Decision, DecisionRefused
+from ai_munimji_engine.core.approvals.service import KindHandler
+from ai_munimji_engine.core.common import iso, short_id, untrusted
 from ai_munimji_engine.packs.stock_procurement.erp import QuoteRule
 from ai_munimji_engine.storage import dumps, loads
-from ..inventory.agent import on_demand_payload
-from ..procurement.scoring import Need, rank_vendors
+from ai_munimji_engine.packs.stock_procurement.inventory.agent import on_demand_payload
+from ai_munimji_engine.packs.stock_procurement.procurement.scoring import Need, rank_vendors
 from .messages import KIND_QUOTE_REQUEST, KIND_QUOTES, build_quote_request, build_quotes_request, fill
 from .vendors import VendorMessenger
 

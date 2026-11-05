@@ -13,12 +13,12 @@ from typing import Any, Optional
 from fastapi import Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from erp_agents.core.common import Actor
+from ai_munimji_engine.core.common import Actor
 from erp_agents.core.resilience import RateLimited
 from ai_munimji_engine.packs.stock_procurement.erp import DEFAULT_IN_TRANSIT, DEFAULT_STOCK_ADD, DEFAULT_STOCK_SUBTRACT, IN_TRANSIT_LABEL, IN_TRANSIT_MODES, STOCK_COLUMNS
-from erp_agents.core.settings_store import PermissionDenied, SettingsError
+from ai_munimji_engine.core.settings_store import PermissionDenied, SettingsError
 from .assistant.chat import ChatLimit
-from .settings import MONITOR_COLUMNS
+from ai_munimji_engine.packs.stock_procurement.settings import MONITOR_COLUMNS
 
 
 class ChatContext(BaseModel):

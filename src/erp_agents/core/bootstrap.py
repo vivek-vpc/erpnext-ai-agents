@@ -9,29 +9,30 @@ from typing import Any, Optional
 from ai_munimji_engine.runtime import Runtime, thread_runtime
 from ai_munimji_engine.stores import CoreStores
 
-from . import metrics, obs, resilience, tracing
-from .audit import AuditChain
-from .history import DecisionHistory
-from .jobs import JobLog
+from . import resilience
+from ai_munimji_engine.core import metrics, obs, tracing
+from ai_munimji_engine.core.audit import AuditChain
+from ai_munimji_engine.core.history import DecisionHistory
+from ai_munimji_engine.core.jobs import JobLog
 from .agents.service import AgentService
-from .agents.store import AgentLog
+from ai_munimji_engine.core.agents.store import AgentLog
 from .api.hardening import MIN_KEY_LENGTH, access_key_warning, demo_key_problem, weak_key
-from .approvals.channels.base import Channel
+from ai_munimji_engine.core.approvals.channels.base import Channel
 from .approvals.channels.registry import build_channels
-from .approvals.models import Recipient
-from .approvals.router import ApprovalRouter
-from .approvals.service import ApprovalService
+from ai_munimji_engine.core.approvals.models import Recipient
+from ai_munimji_engine.core.approvals.router import ApprovalRouter
+from ai_munimji_engine.core.approvals.service import ApprovalService
 from .auth.erpnext import ErpNextLogin
 from .auth.sessions import LoginThrottle, SessionStore
-from .common import Actor, Clock, utcnow
+from ai_munimji_engine.core.common import Actor, Clock, utcnow
 from .config import load_config
 from ai_munimji_engine.core.erp.base import ERPClient
 from .erp.erpnext import ERPNextClient
 from .erp.mock import MockERP
-from .packs import PackError, PackRegistry
-from .settings_store import SettingsStore
-from .toolkit import Toolkit
-from .workorders import WorkOrderQueue
+from ai_munimji_engine.core.packs import PackError, PackRegistry
+from ai_munimji_engine.core.settings_store import SettingsStore
+from ai_munimji_engine.core.toolkit import Toolkit
+from ai_munimji_engine.core.workorders import WorkOrderQueue
 from ..stores import build_core_stores
 
 log = logging.getLogger(__name__)

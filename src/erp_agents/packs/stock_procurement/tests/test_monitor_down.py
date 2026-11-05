@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from conftest import OWNER
 from erp_agents.core.api.app import create_app
 from erp_agents.core.erp.mock import MockERP
-from erp_agents.packs.stock_procurement.inventory.messages import KIND_MONITOR_DOWN
+from ai_munimji_engine.packs.stock_procurement.inventory.messages import KIND_MONITOR_DOWN
 
 
 class FlakyERP(MockERP):

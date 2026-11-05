@@ -13,14 +13,14 @@ import logging
 import time
 from typing import Any, Callable, Optional
 
-from erp_agents.core.approvals.service import ApprovalService
-from erp_agents.core.common import Actor, Clock, iso, utcnow
-from erp_agents.core.policy import AssistantSettings
-from erp_agents.core.settings_store import SettingsStore
+from ai_munimji_engine.core.approvals.service import ApprovalService
+from ai_munimji_engine.core.common import Actor, Clock, iso, utcnow
+from ai_munimji_engine.core.policy import AssistantSettings
+from ai_munimji_engine.core.settings_store import SettingsStore
 from ai_munimji_engine.storage import dumps, loads
 from ai_munimji_engine.stores.stock.assistant import AssistantStore
-from ..inventory.alerts import AlertRepo
-from ..procurement.proposals import ProposalRepo
+from ai_munimji_engine.packs.stock_procurement.inventory.alerts import AlertRepo
+from ai_munimji_engine.packs.stock_procurement.procurement.proposals import ProposalRepo
 from erp_agents.core.assistant.facts import Fact, build_facts
 from erp_agents.core.assistant.llm import LLMClient, LLMError, OllamaClient
 from erp_agents.core.assistant.verify import NOT_ENOUGH, verify

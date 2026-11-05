@@ -7,15 +7,15 @@ import time
 import pytest
 
 from conftest import OWNER, FakeHTTP
-from erp_agents.core.approvals.channels.base import encode_action
+from ai_munimji_engine.core.approvals.channels.base import encode_action
 from erp_agents.core.approvals.channels.simple import InboxChannel
 from erp_agents.core.approvals.channels.telegram import TelegramChannel
 from erp_agents.core.approvals.channels.whatsapp import WhatsAppChannel
 from erp_agents.core.approvals.inbound import process_inbound
-from erp_agents.core.approvals.models import InboundEvent
+from ai_munimji_engine.core.approvals.models import InboundEvent
 from erp_agents.packs.stock_procurement.assistant.conversation import Conversation, parse_qty, render
 from erp_agents.core.assistant.verify import NOT_ENOUGH
-from erp_agents.core.workorders import REORDER_NEEDED
+from ai_munimji_engine.core.workorders import REORDER_NEEDED
 from erp_agents.core.erp.mock import MockERP
 
 OWNER_CHAT = "555"

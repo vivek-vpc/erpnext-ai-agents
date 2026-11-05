@@ -13,7 +13,7 @@ from erp_agents.packs.stock_procurement.agents.inventory_agent import rules_brie
 from erp_agents.core.agents.privacy import privacy_summary
 from erp_agents.core.api.app import create_app
 from erp_agents.packs.stock_procurement.assistant.chat import looks_like_a_question
-from erp_agents.core.policy import AgentSettings
+from ai_munimji_engine.core.policy import AgentSettings
 from erp_agents.core.erp.mock import MockERP
 from erp_agents.core.scheduler import AgentScheduler
 from erp_agents.packs.stock_procurement.jobs import BRIEF_JOB

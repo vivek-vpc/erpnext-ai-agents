@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from ..approvals.models import ApprovalRecord
+from ai_munimji_engine.core.approvals.models import ApprovalRecord
 
 
 @dataclass(frozen=True)

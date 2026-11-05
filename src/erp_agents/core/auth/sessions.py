@@ -18,8 +18,8 @@ from collections import Counter, deque
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
-from .. import obs
-from ..acting import ActingAs
+from ai_munimji_engine.core import obs
+from ai_munimji_engine.core.acting import ActingAs
 from .erpnext import ErpNextLogin, Identity, LoginError
 
 

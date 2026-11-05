@@ -18,9 +18,9 @@ from urllib.parse import quote
 import requests
 
 from ...netguard import no_redirects
-from ..models import ApprovalRecord, DeliveryResult, InboundEvent
-from ..render import render_html, truncate
-from .base import Channel, decode_action, encode_action, safe_equals
+from ai_munimji_engine.core.approvals.models import ApprovalRecord, DeliveryResult, InboundEvent
+from ai_munimji_engine.core.approvals.render import render_html, truncate
+from ai_munimji_engine.core.approvals.channels.base import Channel, decode_action, encode_action, safe_equals
 
 log = logging.getLogger(__name__)
 MAX_TEXT = 3900   # Telegram limit is 4096 characters

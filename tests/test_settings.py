@@ -1,8 +1,8 @@
 import pytest
 
-from erp_agents.core.settings_store import PermissionDenied, SettingsError, SettingsStore
+from ai_munimji_engine.core.settings_store import PermissionDenied, SettingsError, SettingsStore
 from erp_agents.stores import build_core_stores
-from erp_agents.packs.stock_procurement.settings import attach
+from ai_munimji_engine.packs.stock_procurement.settings import attach
 
 from conftest import OWNER, VIEWER, storage_kind
 

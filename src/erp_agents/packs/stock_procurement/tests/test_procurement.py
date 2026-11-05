@@ -6,11 +6,11 @@ from fastapi.testclient import TestClient
 
 from conftest import APPROVER, OWNER
 from erp_agents.core.api.app import create_app
-from erp_agents.packs.stock_procurement.settings import ProcurementSettings
-from erp_agents.core.workorders import REORDER_NEEDED
+from ai_munimji_engine.packs.stock_procurement.settings import ProcurementSettings
+from ai_munimji_engine.core.workorders import REORDER_NEEDED
 from ai_munimji_engine.packs.stock_procurement.erp import VendorOffer
 from erp_agents.core.erp.mock import MockERP
-from erp_agents.packs.stock_procurement.procurement.scoring import Need, rank_vendors
+from ai_munimji_engine.packs.stock_procurement.procurement.scoring import Need, rank_vendors
 
 TODAY = date(2026, 10, 16)
 
@@ -53,7 +53,7 @@ def test_weights_change_the_winner_and_are_normalised():
 
 
 def normalised(s):
-    from erp_agents.packs.stock_procurement.procurement.scoring import normalised_weights
+    from ai_munimji_engine.packs.stock_procurement.procurement.scoring import normalised_weights
     return normalised_weights(s)
 
 

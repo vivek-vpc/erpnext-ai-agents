@@ -22,6 +22,15 @@ the core and the edges are today, the rules for new code, and an audit of where 
 
 ## The structure: a shared core and switchable packs
 
+The code is in two packages of one repository (Phase 2 of the Frappe work). **`ai_munimji_engine`** (`engine/src/`, its own distribution `ai-munimji-engine`, which needs pydantic and PyYAML only) holds the rule logic:
+the approval service and the audit seal, the settings store, the tool registry, the stock pack's analysis, scoring, alerts, proposals, tools and agents, the ERP ports, the stores (Protocols with an
+in-memory class beside each) and the runtime (jobs, lock, chat memory). **`erp_agents`** (`src/`) is the standalone service built on it: the web application, the scheduler, the command line, the SQLite
+stores, the REST client for ERPNext, the channels, sign-in, the AI agents and the console. A module that moved keeps its place in the tree, so `core/audit.py` in the documents is
+`erp_agents/core/audit.py` or, for the 38 modules that moved (`tools/move_to_engine.py` lists them), `ai_munimji_engine/core/audit.py`. The engine never imports `erp_agents`
+(`tests/test_engine_imports.py` imports every engine module with only the engine on the path and with the web, the database and the network refused).
+
+The tree below is the one before the move; the modules in it that moved are the ones listed in `tools/move_to_engine.py`.
+
 ```
 src/erp_agents/
   core/                         what every pack shares (nothing in it knows about stock, vendors or purchase orders)

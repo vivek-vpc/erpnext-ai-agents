@@ -42,7 +42,7 @@ except Exception:  # pragma: no cover
 
 from urllib.parse import quote
 
-from .. import obs
+from ai_munimji_engine.core import obs
 from ..httpguard import guard_session
 from ..netguard import no_redirects
 from ai_munimji_engine.packs.stock_procurement.erp import STOCK_COLUMNS, CountLine, DailyUsage, ItemInfo, MessageResult, PurchaseOrderDraft, PurchaseOrderResult, QuoteRule, ReceiptLine, RequisitionDraft, SalesDue, StockInfo, StockTransferDraft, SupplierContact, TaxRow, TaxSetup, VendorOffer, WarehouseStock

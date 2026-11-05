@@ -12,11 +12,11 @@ from zoneinfo import ZoneInfo
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_MISSED, EVENT_JOB_SUBMITTED
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from . import metrics, obs
+from ai_munimji_engine.core import metrics, obs
 from .approvals.channels.telegram import TelegramChannel
 from .approvals.inbound import process_inbound
 from .bootstrap import App
-from .jobs import MAINTENANCE_JOB                    # (defined with the record of runs, jobs.py: /ready and doctor read it too)
+from ai_munimji_engine.core.jobs import MAINTENANCE_JOB
 
 log = logging.getLogger(__name__)
 

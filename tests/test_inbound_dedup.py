@@ -12,12 +12,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 from conftest import FakeHTTP, storage_kind
-from erp_agents.core import metrics
+from ai_munimji_engine.core import metrics
 from erp_agents.core.api.app import create_app
 from erp_agents.core.approvals.channels.simple import InboxChannel
 from erp_agents.core.approvals.channels.telegram import TelegramChannel
 from erp_agents.core.approvals.channels.whatsapp import WhatsAppChannel, encode_action
-from erp_agents.core.approvals.inbound_ledger import InboundLedger
+from ai_munimji_engine.core.approvals.inbound_ledger import InboundLedger
 from erp_agents.core.erp.mock import MockERP
 from erp_agents.core.scheduler import AgentScheduler
 from erp_agents.core.storage import Database
