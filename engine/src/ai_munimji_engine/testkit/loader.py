@@ -55,6 +55,7 @@ CUSTOMER = "Contract Customer"
 CUSTOMER_GROUP = "Contract Customers"
 TERRITORY = "Contract Territory"
 ITEM_GROUP = "Contract Goods"
+VALUATION_RATE = 10.0                                                  # every stock item has one, so a draft stock entry is not refused for lack of it
 TERMS = {30: ("Contract 30 days", "Contract Net 30")}               # credit days -> (the payment term, its template)
 REF_FIELD, APPROVED_FIELD = "custom_agent_ref", "custom_agent_approved_by"      # the fields `erp-agents erp-setup` makes, and the app's fixtures
 
@@ -121,6 +122,8 @@ class Loader:
         for it in world.items:
             doc = {"item_code": self.n(it.key), "item_name": it.name, "item_group": ITEM_GROUP, "stock_uom": "Nos", "is_stock_item": 1 if it.stock_item else 0,
                    "supplier_items": [{"supplier": self.n(k)} for k in it.suppliers]}
+            if it.stock_item:
+                doc["valuation_rate"] = VALUATION_RATE      # ERPNext refuses even a DRAFT stock entry for an item with no valuation rate; without this, whether a transfer can be drafted would depend on what ran before
             if it.lead_time_days:
                 doc["lead_time_days"] = it.lead_time_days
             if it.min_order_qty:
