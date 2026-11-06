@@ -175,7 +175,10 @@ class MockERP:
                 continue
             if item_code and d.get("item_code") != item_code:
                 continue
-            out.append({"doctype": doctype, "name": d["name"], "status": d.get("status", "Draft"), "docstatus": d.get("docstatus", 0), "party": d.get("supplier"), "party_id": d.get("supplier_id") or d.get("supplier"), "date": self.today.isoformat() if hasattr(self, "today") and hasattr(self.today, "isoformat") else None,
+            made = d.get("date") or self.today                                  # an order of the contract world has its own date; one created here was created today
+            if since is not None and made < since:
+                continue
+            out.append({"doctype": doctype, "name": d["name"], "status": d.get("status", "Draft"), "docstatus": d.get("docstatus", 0), "party": d.get("supplier"), "party_id": d.get("supplier_id") or d.get("supplier"), "date": made.isoformat(),
                         "due": d["required_by"].isoformat() if d.get("required_by") else None, "created_by": d.get("created_by"), "approved_by": d.get("approved_by", ""),
                         "per_received": d.get("per_received", 0.0), "per_billed": d.get("per_billed", 0.0), "total": None, "currency": None, "kind": "Purchase" if doctype == "Material Request" else None,
                         "lines": [{"item_code": d.get("item_code"), "item_name": d.get("item_code"), "qty": d.get("qty"), "uom": d.get("uom"), "done_qty": float(d.get("received_qty") or 0.0)}]})
@@ -221,6 +224,8 @@ class MockERP:
         """A DRAFT, like the real client: no stock moves until `submit_stock_transfer` (what a person does in ERPNext)."""
         if self.fail_purchase_orders:
             return PurchaseOrderResult(ok=False, error="mock ERP refused the stock transfer")
+        if draft.from_warehouse == draft.to_warehouse:                                               # like the real client
+            return PurchaseOrderResult(ok=False, error="the two warehouses are the same")
         for t in self.stock_transfers:
             if draft.reference and t.get("reference") == draft.reference and t["docstatus"] < 2:       # a retry finds the document it already made
                 return PurchaseOrderResult(ok=True, name=t["name"])
