@@ -78,6 +78,7 @@ class Ranking:
     vendors: list[ScoredVendor]            # eligible first (best first), then excluded
     weights: dict[str, float]              # normalised to sum to 100
     notes: list[str] = field(default_factory=list)
+    tax_setups: dict[str, dict[str, Any]] = field(default_factory=dict)       # per supplier: the tax figures this comparison used (only ones the ERP really answered)
 
     @property
     def best(self) -> Optional[ScoredVendor]:
@@ -88,7 +89,10 @@ class Ranking:
         return [v for v in self.vendors if v.eligible]
 
     def to_dict(self) -> dict[str, Any]:
-        return {"vendors": [v.to_dict() for v in self.vendors], "weights": self.weights, "notes": self.notes}
+        out: dict[str, Any] = {"vendors": [v.to_dict() for v in self.vendors], "weights": self.weights, "notes": self.notes}
+        if self.tax_setups:
+            out["tax_setups"] = self.tax_setups
+        return out
 
 
 def normalised_weights(s: ProcurementSettings) -> dict[str, float]:
@@ -183,8 +187,12 @@ def rank_vendors(offers: list[VendorOffer], need: Need, settings: ProcurementSet
         if all(v.arrives_after_stockout for v in elig):
             notes.append("Every vendor would deliver after you run out of stock; consider asking the best one to expedite.")
         if settings.include_taxes and tax_setups is not None and not any(v.tax_lines for v in elig):
-            notes.append("Duties and taxes are not in this comparison: the ERP has no Tax Rule or default purchase taxes template that applies "
-                         "to these vendors. Set them up in the ERP (Tax Rule, Purchase Taxes and Charges Template) and the next comparison will use them.")
+            if all(getattr(tax_setups.get(v.supplier), "unavailable", False) for v in elig):
+                notes.append("Taxes are not included in these totals: the ERP's tax setup could not be read for this request, so every figure here is before tax. "
+                             "Check the taxes on the order in the ERP before you rely on the totals.")
+            else:
+                notes.append("Duties and taxes are not in this comparison: the ERP has no Tax Rule or default purchase taxes template that applies "
+                             "to these vendors. Set them up in the ERP (Tax Rule, Purchase Taxes and Charges Template) and the next comparison will use them.")
         best = elig[0]
         for v in elig[1:]:
             v.why_not = _why_not(best, v, need.uom)
@@ -192,7 +200,8 @@ def rank_vendors(offers: list[VendorOffer], need: Need, settings: ProcurementSet
     excluded = sorted((v for v in vendors if not v.eligible), key=lambda v: v.name)
     for v in excluded:
         v.why_not = v.excluded_reason
-    return Ranking(vendors=elig + excluded, weights=weights, notes=notes)
+    kept = {o.supplier: taxes.setup_to_dict(tax_setups[o.supplier]) for o in offers if tax_setups and o.supplier in tax_setups and not tax_setups[o.supplier].unavailable}
+    return Ranking(vendors=elig + excluded, weights=weights, notes=notes, tax_setups=kept)
 
 
 # ---------------------------------------------------------------------------------------------- explanations

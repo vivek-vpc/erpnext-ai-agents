@@ -433,7 +433,7 @@ class ERPNextClient:
         try:
             doc = self._doc("Purchase Taxes and Charges Template", template)
         except (ERPNextError, requests.RequestException) as exc:
-            return TaxSetup(template, source, (), (*notes, f"could not read template '{template}': {exc}"), tax_category)
+            return TaxSetup(template, source, (), (*notes, f"could not read template '{template}': {exc}"), tax_category, unavailable=True)
         rows = [dict(r) for r in doc.get("taxes", [])]
         if any(r.get("included_in_print_rate") for r in rows):
             notes.append("some template rows are included in the price; this agent treats vendor prices as excluding tax")
