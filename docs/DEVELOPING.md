@@ -45,7 +45,8 @@ src/erp_agents/
     scheduler.py, cli.py, ops.py  the clock, the command line, backup/restore/doctor
   packs/
     stock_procurement/          the only pack with code today: stock watching, vendor comparison, order requests
-      manifest.yaml                 what the pack declares (tools, roles, approvals, settings, what goes to a model)
+      (manifest.yaml                what the pack declares (tools, roles, approvals, settings, what goes to a model): it is in the engine,
+                                    engine/src/ai_munimji_engine/packs/stock_procurement/, so that the Frappe app reads the same file; the skeleton packs keep theirs here)
       pack.py                       PACK: the entry object the core loads
       tools.py, mcp_tools.py        the seven stock tools (read and prepare) and their typed MCP form
       agents/, inventory/, procurement/, assistant/    the agents, the analysis, the scoring, the chat
