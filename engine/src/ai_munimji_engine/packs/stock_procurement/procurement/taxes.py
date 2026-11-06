@@ -26,6 +26,17 @@ from ai_munimji_engine.packs.stock_procurement.erp import TaxRow, TaxSetup
 COST_CATEGORIES = ("Valuation", "Valuation and Total")
 
 
+def setup_to_dict(setup: TaxSetup) -> dict:
+    """The tax figures as kept with a proposal (JSON-safe), so that a later recalculation uses the figures the request was first made with."""
+    return asdict(setup)
+
+
+def setup_from_dict(data: dict) -> TaxSetup:
+    return TaxSetup(template=data.get("template"), source=data.get("source") or "none", rows=tuple(TaxRow(**r) for r in data.get("rows") or ()),
+                    notes=tuple(data.get("notes") or ()), tax_category=data.get("tax_category"), item_template=data.get("item_template"),
+                    unavailable=bool(data.get("unavailable")))
+
+
 @dataclass
 class ChargeLine:
     template: str

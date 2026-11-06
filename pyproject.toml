@@ -49,6 +49,7 @@ where = ["src", "engine/src"]             # the standalone service (erp_agents) 
 
 [tool.setuptools.package-data]
 erp_agents = ["settings.example.yaml", "packs/stock_procurement/web/*", "packs/*/manifest.yaml", "packs/*/README.md"]
+ai_munimji_engine = ["packs/*/manifest.yaml"]            # the stock pack's manifest lives in the engine
 
 [tool.pytest.ini_options]
 # core and cross-cutting tests live in tests/; each pack keeps its own next to its code. conftest.py (the shared fixtures) is at the repository root, and every test folder is on the

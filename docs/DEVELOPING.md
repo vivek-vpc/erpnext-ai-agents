@@ -45,7 +45,8 @@ src/erp_agents/
     scheduler.py, cli.py, ops.py  the clock, the command line, backup/restore/doctor
   packs/
     stock_procurement/          the only pack with code today: stock watching, vendor comparison, order requests
-      manifest.yaml                 what the pack declares (tools, roles, approvals, settings, what goes to a model)
+      (manifest.yaml                what the pack declares (tools, roles, approvals, settings, what goes to a model): it is in the engine,
+                                    engine/src/ai_munimji_engine/packs/stock_procurement/, so that the Frappe app reads the same file; the skeleton packs keep theirs here)
       pack.py                       PACK: the entry object the core loads
       tools.py, mcp_tools.py        the seven stock tools (read and prepare) and their typed MCP form
       agents/, inventory/, procurement/, assistant/    the agents, the analysis, the scoring, the chat
@@ -89,6 +90,12 @@ These are the checks a pack cannot opt out of, because they live in the core and
    `ApprovalService`, `AlertRepo`, `ProposalRepo`, `NoticeRepo`, `WorkOrderQueue`, `SettingsStore`, `AgentLog` and the rest take a store, never a database. The Frappe app gives them stores over
    DocTypes, so a stray `db.execute` somewhere else is work nobody will find: `tests/test_no_sqlite_in_the_domain.py` fails if any module that is not about SQLite reaches `sqlite3`,
    and `tests/test_store_contracts_core.py` and the pack's `test_store_contracts_stock.py` run every store on SQLite and in memory. A new store comes with its Protocol, both classes and a contract test.
+   **The ERP port has shared checks too.** `ai_munimji_engine.testkit` (shipped in the engine wheel, no `pytest` in its imports) holds a small neutral **world** (warehouses, items with and without history,
+   suppliers, orders, receipts, a quotation, a sales order, a Tax Rule; dates relative to a reference day) and about 44 **checks** written once against the port, each saying which part of the world it needs.
+   They are run on the demo ERP (`erp_agents.core.erp.world_erp.WorldERP`, `tests/test_erp_contract.py`), on the REST client against a live ERPNext (`python -m tools.testdata.cli contract` loads the world
+   into the site, then `python tools/contract_report.py rest --site ... --out rest.json`), and, in the Frappe app, on its own client on a bench. `python tools/contract_report.py demo --out demo.json` writes the
+   demo ERP's column; `python tools/contract_table.py demo.json rest.json frappe.json` merges the three into one table. A new method of the port comes with a check; a client that lacks a method a check calls
+   is reported as skipped, never as passed.
 2. **The core imports no `fastapi`, `requests`, `apscheduler`, `sqlite3` or `threading`.** Talk to the world through a port.
 3. **A job is a plain function** (`run(...)`) that does one pass and returns. It never sleeps or loops. The scheduler decides when it runs (APScheduler today,
    `scheduler_events` and `frappe.enqueue` in Frappe). Work that can take long (a model call, a message send) must be possible to put on a queue: do not add
@@ -203,11 +210,11 @@ A pack is a folder under `src/erp_agents/packs/` that adds one area (sales, fina
 
 ```powershell
 python -m pytest -q                     # the whole suite: the core's tests in tests/ and each pack's in its own tests/ folder
-python -m bandit -r src -q -x "src/erp_agents/packs/*/tests/*"   # static security scan of the program (not the tests): must report no issue
+python -m bandit -r src engine/src -q -x "src/erp_agents/packs/*/tests/*,engine/src/ai_munimji_engine/testkit/*"   # static security scan of the program (not the tests): must report no issue
 python -m pip_audit                     # known vulnerabilities in the installed dependencies
 ```
 
-Install the tools with `pip install -e ".[dev,agents]"`. CI runs all three. The pack tests live inside `src/`, so the bandit command leaves them out (a test is full of `assert`, which bandit's B101 flags); the scan covers exactly the code that ships, as it did when all tests sat in `tests/`. Rules:
+Install the tools with `pip install -e ".[dev,agents]"`. CI runs all three. The pack tests live inside `src/`, and the shared ERP-client checks (the engine's `testkit`) ship in the engine wheel, so the bandit command leaves both out (a test is full of `assert`, which bandit's B101 flags); the scan covers the code that runs the service, as it did when all tests sat in `tests/`. Rules:
 
 * A bandit finding is fixed, or silenced on that line with `# <why it is safe>  # nosec Bxxx` (the reason goes first: bandit reads everything after `nosec`). Never silence a rule for a whole file or turn one off.
 * A new place that sends a credential (an API key, a token, a password) must use a session that does not follow redirects (`core.netguard.no_redirects`) and send it only to the host it belongs to.

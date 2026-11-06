@@ -479,7 +479,7 @@ src/erp_agents/packs/
     inventory/            analysis (maths), messages (explanations), agent (lifecycle)
     procurement/          vendor scoring, taxes, proposals, agent (lifecycle)
     assistant/, agents/   the chat and "Ask why", the two AI agents' prompts and tasks
-    tools.py, manifest.yaml, pack.py, settings.py, schema.py, api.py, cli.py, jobs.py, web/, tests/
+    tools.py, pack.py, settings.py, schema.py, api.py, cli.py, jobs.py, web/, tests/      (its manifest.yaml is in the engine)
   sales/, finance/        empty skeletons: a manifest and a README, no code
 ```
 

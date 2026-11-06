@@ -141,6 +141,7 @@ class TaxSetup:
     notes: tuple[str, ...] = ()              # e.g. "no Tax Rule matched and no default template", or what could not be read
     tax_category: Optional[str] = None       # the supplier's tax category in the ERP
     item_template: Optional[str] = None      # the item tax template that adjusted some rates, if any
+    unavailable: bool = False                # the ERP's tax setup could not be read at all (not "the ERP applies none"): the figures say nothing about this vendor's taxes
 
 
 @dataclass(frozen=True)

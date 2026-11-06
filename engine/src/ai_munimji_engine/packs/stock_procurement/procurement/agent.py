@@ -32,9 +32,10 @@ from .messages import (
 )
 from .proposals import Proposal, ProposalRepo
 from ..inventory.analysis import _n
+from . import taxes
 from .scoring import Need, Ranking, ScoredVendor, rank_vendors
 
-log = logging.getLogger(__name__)
+log =logging.getLogger(__name__)
 AGENT_NAME = "procurement"
 
 
@@ -215,18 +216,23 @@ class ProcurementAgent:
         self.approvals.deliver(record)
         return {**base, "action": "manual", "proposal_id": prop.id, "approval_id": record.id, "problem": problem}
 
-    def _tax_setups(self, offers: list[Any], item_code: str, cfg: Any) -> Optional[dict[str, TaxSetup]]:
-        """Ask the ERP which duties and taxes it applies to this item from each vendor. None = taxes are switched off.
-        A vendor the ERP cannot answer for gets a setup saying why, so the comparison says so instead of guessing."""
+    def _tax_setups(self, offers: list[Any], item_code: str, cfg: Any, kept: Optional[dict[str, Any]] = None) -> Optional[dict[str, TaxSetup]]:
+        """The duties and taxes the ERP applies to this item from each vendor. None = taxes are switched off.
+        `kept` = the figures stored with the proposal: they are used as they are, and the ERP is asked only for a vendor that has none (a person changing a request does not
+        see everything the scheduled job may read, so the figures the request was made with are not read again).
+        A vendor the ERP cannot answer for gets a setup saying why (`unavailable`), so the comparison says taxes are not included instead of guessing or showing zero."""
         if not cfg.include_taxes:
             return None
         setups: dict[str, TaxSetup] = {}
         for o in offers:
+            if kept and o.supplier in kept:
+                setups[o.supplier] = taxes.setup_from_dict(kept[o.supplier])
+                continue
             try:
                 setups[o.supplier] = self.erp.get_purchase_taxes(o.supplier, item_code, self.today())
             except Exception as exc:  # noqa: BLE001 - one vendor's tax lookup must not stop the proposal
                 log.warning("could not read the purchase taxes for %s / %s: %s", o.supplier, item_code, exc)
-                setups[o.supplier] = TaxSetup(template=None, source="none", notes=(f"could not read the ERP's tax setup: {exc}",))
+                setups[o.supplier] = TaxSetup(template=None, source="none", notes=(f"could not read the ERP's tax setup: {exc}",), unavailable=True)
         return setups
 
     # ================================================================== read-only preview (admin screen)
@@ -294,7 +300,7 @@ class ProcurementAgent:
         qty = float(moq) if short else float(prop.qty or 0)
         offers = self._offers(prop.item_code, cfg)
         need = Need(qty=qty, cover_days=wo.get("cover_days"), fallback_lead_days=float(wo.get("lead_time_days") or 7), uom=uom)
-        ranking = rank_vendors(offers, need, cfg, self._tax_setups(offers, prop.item_code, cfg))
+        ranking = rank_vendors(offers, need, cfg, self._tax_setups(offers, prop.item_code, cfg, kept=(prop.ranking or {}).get("tax_setups")))
         best = next((v for v in ranking.eligible if v.supplier == prop.supplier), None) or ranking.best
         if best is None:
             return None
@@ -386,7 +392,7 @@ class ProcurementAgent:
             return self._refused(record, why)
         offers = self._offers(prop.item_code, cfg)
         need = Need(qty=qty, cover_days=wo.get("cover_days"), fallback_lead_days=float(wo.get("lead_time_days") or 7), uom=uom)
-        ranking = rank_vendors(offers, need, cfg, self._tax_setups(offers, prop.item_code, cfg))
+        ranking = rank_vendors(offers, need, cfg, self._tax_setups(offers, prop.item_code, cfg, kept=(prop.ranking or {}).get("tax_setups")))
         best = ranking.best
         if best is None:
             return self._refused(record, f"No vendor can be compared for {_n(qty)} {uom}, so the request is unchanged.")
@@ -414,7 +420,7 @@ class ProcurementAgent:
         if chosen is None:
             return self._refused(record, "That vendor is not one of the vendors that were compared for this request.")
         need = Need(qty=float(prop.qty or 0), cover_days=wo.get("cover_days"), fallback_lead_days=float(wo.get("lead_time_days") or 7), uom=wo.get("uom", "units"))
-        ranking = Ranking(vendors=vendors, weights=stored.get("weights") or {}, notes=list(stored.get("notes") or []))
+        ranking = Ranking(vendors=vendors, weights=stored.get("weights") or {}, notes=list(stored.get("notes") or []), tax_setups=dict(stored.get("tax_setups") or {}))
         text = f"Vendor changed from {prop.supplier_name} to {chosen.name} by {who}. The quantity is unchanged."
         new = self._revise(record, prop, wo, ranking, chosen, need, cfg, text, extra={"chosen_by": who, "chosen_supplier": chosen.supplier})
         if new is None:

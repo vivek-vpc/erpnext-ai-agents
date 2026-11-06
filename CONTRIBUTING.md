@@ -24,7 +24,7 @@ The AI path has its own evaluation, which also runs in `pytest`: `python -m tool
 4. **No secrets, no personal data** in code, tests, docs or logs. Use `agent@example.com`-style placeholders. Test data is fictional.
 5. **AI agents are fenced, not trusted.** An agent may use only the tools in `core/toolkit.py` (the same ones the MCP server publishes); no tool orders, approves, pays or changes a setting; what a tool returns carries no customer or staff personal data (`src/erp_agents/packs/stock_procurement/tests/test_toolkit.py` checks this); every number an agent writes is checked against the tools' results; and the deterministic result is always the fallback. See [docs/AGENTS.md](docs/AGENTS.md) and [docs/PRIVACY.md](docs/PRIVACY.md).
 6. **User-facing text** is plain English written for a small-business owner, built in one place (the message modules), not inside routes.
-7. **Run the security checks** before you push: `python -m bandit -r src -q -x "src/erp_agents/packs/*/tests/*"` must report no issue (a justified exception is a `# reason  # nosec Bxxx` comment on that line) and `python -m pip_audit` must report no known vulnerability. A security fix comes with a regression test ([docs/DEVELOPING.md](docs/DEVELOPING.md)).
+7. **Run the security checks** before you push: `python -m bandit -r src engine/src -q -x "src/erp_agents/packs/*/tests/*,engine/src/ai_munimji_engine/testkit/*"` must report no issue (a justified exception is a `# reason  # nosec Bxxx` comment on that line) and `python -m pip_audit` must report no known vulnerability. A security fix comes with a regression test ([docs/DEVELOPING.md](docs/DEVELOPING.md)).
 8. Say honestly in the pull request what you tested and what you could not.
 
 ## Pull requests

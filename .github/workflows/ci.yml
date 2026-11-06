@@ -123,7 +123,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev,agents,otel]"
       - name: bandit (any finding fails the build; a justified exception carries a nosec comment that says why)
-        run: python -m bandit -r src engine/src -q -x "src/erp_agents/packs/*/tests/*"
+        run: python -m bandit -r src engine/src -q -x "src/erp_agents/packs/*/tests/*,engine/src/ai_munimji_engine/testkit/*"
       - name: pip-audit (known vulnerabilities in the dependencies)
         run: python -m pip_audit --skip-editable
 

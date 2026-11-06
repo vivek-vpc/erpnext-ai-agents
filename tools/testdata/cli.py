@@ -4,6 +4,8 @@
     python -m tools.testdata.cli run --step company   run one step (or several: --step a --step b; or --all)
     python -m tools.testdata.cli run --all --dry-run  show what would be created, change nothing
     python -m tools.testdata.cli cleanup-list         list everything created so far (from the manifest)
+    python -m tools.testdata.cli contract --url http://localhost:8000 --key K --secret S --out contract-site.json
+                                                      the small world of the shared ERP-client checks (ai_munimji_engine.testkit), into any ERPNext site
 """
 from __future__ import annotations
 
@@ -29,6 +31,30 @@ def build_context(dry_run: bool, config: str) -> Context:
         raise SystemExit("The test data loader needs erp.type: erpnext in the config.")
     client = ERPNextClient(cfg["url"], cfg["api_key"], cfg["api_secret"])
     return Context(Writer(client.session, client.base_url, MANIFEST, dry_run=dry_run))
+
+
+def run_contract(args) -> int:
+    """Load the world of the shared ERP-client checks into the site at --url (default $ERP_CONTRACT_URL) and write what the site called its parts to --out."""
+    import os
+
+    import requests
+
+    from . import contract
+    url, key, secret = args.url or os.environ.get("ERP_CONTRACT_URL"), args.key or os.environ.get("ERP_CONTRACT_KEY"), args.secret or os.environ.get("ERP_CONTRACT_SECRET")
+    if not (url and key and secret):
+        print("give --url, --key and --secret (or ERP_CONTRACT_URL, ERP_CONTRACT_KEY, ERP_CONTRACT_SECRET)")
+        return 2
+    session = requests.Session()
+    session.headers.update({"Authorization": f"token {key}:{secret}", "Accept": "application/json"})
+    writer = Writer(session, url, None, dry_run=args.dry_run)                    # no manifest: the documents carry the marker TD/CT-..., and the output file names the rest
+    try:
+        site = contract.run(writer, Path(args.out), args.company)
+    except (WriterError, contract.LoaderError) as exc:
+        print(f"STOPPED: {exc}\nEverything created before this point is kept; running it again continues.")
+        return 1
+    print("Summary:\n" + writer.summary())
+    print(f"Company {site['company']} ({site['abbr']}); reference day {site['today']}; the description of the site is in {args.out}" + ("  [DRY RUN: nothing written]" if args.dry_run else ""))
+    return 0
 
 
 def run_year(args) -> int:
@@ -218,6 +244,13 @@ def main(argv=None) -> int:
     f.add_argument("--alpha", type=float, default=2700.0, help="quote-replies: Alpha's price per unit")
     f.add_argument("--beta", type=float, default=2600.0, help="quote-replies: Beta's price per unit")
     f.add_argument("--delta", type=float, default=2950.0, help="quote-replies: Delta's price per unit")
+    c = sub.add_parser("contract", help="the small world of the shared ERP-client checks, posted into an ERPNext site (needs no config file)")
+    c.add_argument("--url")
+    c.add_argument("--key")
+    c.add_argument("--secret")
+    c.add_argument("--company", help="the company to use (default: the only one the site has)")
+    c.add_argument("--out", default="contract-site.json", help="where to write the site's description (reference day, names); a second run keeps the reference day in it")
+    c.add_argument("--dry-run", action="store_true")
     args = p.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
@@ -236,6 +269,8 @@ def main(argv=None) -> int:
         print(f"  total {len(rows)} records, manifest: {MANIFEST}")
         return 0
 
+    if args.cmd == "contract":
+        return run_contract(args)
     if args.cmd == "features":
         return run_features(args)
     if args.cmd == "year":

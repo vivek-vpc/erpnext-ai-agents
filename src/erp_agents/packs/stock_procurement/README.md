@@ -9,7 +9,7 @@ a part of the program.
 
 | Where | What |
 |---|---|
-| `manifest.yaml` | the declaration: the tools, the ERPNext roles and permissions it needs, 15 kinds of approval request and what answering them may create, the settings it adds, what an agent may send to a language model. The privacy statement, `erp-agents erp-check-access` and the sign-in defaults are built from it |
+| `manifest.yaml` (in the engine: `engine/src/ai_munimji_engine/packs/stock_procurement/`) | the declaration: the tools, the ERPNext roles and permissions it needs, 15 kinds of approval request and what answering them may create, the settings it adds, what an agent may send to a language model. The privacy statement, `erp-agents erp-check-access` and the sign-in defaults are built from it |
 | `pack.py` | `PACK`, the entry object the core loads. `setup(app)` builds the services and registers them with the core; the other hooks add routes, commands, scheduled work and MCP tools |
 | `inventory/` | the stock analysis (maths in `analysis.py`), its plain-English messages, the alert repository and the daily check |
 | `procurement/` | vendor scoring (`scoring.py`), taxes and duties, proposals, the procurement pass that turns an approved reorder into a purchase request |
