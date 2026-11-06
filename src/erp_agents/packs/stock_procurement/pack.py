@@ -12,7 +12,8 @@ from typing import Any
 
 from ai_munimji_engine.core.common import Actor
 from erp_agents.core.config import HASH_KEY_ENV, hash_key_state
-from ai_munimji_engine.core.packs import Pack, load_manifest
+from ai_munimji_engine.core.packs import Pack
+from ai_munimji_engine.packs.stock_procurement.manifest import manifest as stock_manifest
 
 from .agents.tasks import StockAgentTasks
 from .followup.messages import KIND_CHASE, KIND_QUOTE_REQUEST, KIND_QUOTES, KIND_RECEIPT
@@ -34,7 +35,7 @@ from ai_munimji_engine.packs.stock_procurement.tools import StockTools
 
 log = logging.getLogger(__name__)
 HERE = Path(__file__).resolve().parent
-MANIFEST = load_manifest(HERE / "manifest.yaml")
+MANIFEST = stock_manifest()                  # the manifest is in the engine (ai_munimji_engine/packs/stock_procurement/manifest.yaml): the Frappe app reads the same file
 NAME = MANIFEST.name
 # kinds of approval request that are information only: nobody is reminded about them
 NO_REMINDER_KINDS = ("inventory.alert", "procurement.order", KIND_SLOW, KIND_COUNT_PLAN, KIND_COUNT_VARIANCE)

@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from ai_munimji_engine.core.packs import PackRegistry
+from ai_munimji_engine.core.packs import PackRegistry, engine_manifest_path
 
 SRC = Path(__file__).resolve().parent.parent / "src" / "erp_agents"
 CORE = SRC / "core"
@@ -82,7 +82,10 @@ def test_an_active_pack_has_its_entry_object_manifest_and_readme():
     assert "stock_procurement" in actives
     for name in actives:
         root = registry.roots[name]
-        assert (root / "pack.py").is_file() and (root / "manifest.yaml").is_file() and (root / "README.md").is_file(), name
+        manifest_file = root / "manifest.yaml"
+        if not manifest_file.is_file():
+            manifest_file = engine_manifest_path(name)                       # the stock pack's manifest is in the engine
+        assert (root / "pack.py").is_file() and manifest_file.is_file() and (root / "README.md").is_file(), name
         pack = registry.load(name)
         assert pack.manifest == registry.manifests[name]
 
