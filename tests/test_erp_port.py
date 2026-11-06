@@ -53,6 +53,6 @@ def test_the_core_does_not_import_the_stock_port():
             continue
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if isinstance(node, ast.ImportFrom) and (node.module or "").startswith("ai_munimji_engine.packs"):
-                if path.name not in ("mock.py", "erpnext.py"):           # the two ERP implementations serve the stock pack and build its types
+                if path.name not in ("mock.py", "erpnext.py", "world_erp.py"):      # the ERP implementations (the demo ERP, the REST client, the demo ERP over the shared test world) serve the stock pack and build its types
                     offenders.append(f"{path.relative_to(core)}:{node.lineno}")
     assert not offenders, "the core must reach the stock pack's types only through the ERP implementations: " + ", ".join(offenders)
