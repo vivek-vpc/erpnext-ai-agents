@@ -4,9 +4,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Callable, Optional
 
-from ..models import ApprovalRecord, DeliveryResult
-from ..render import render_plain
-from .base import Channel
+from ai_munimji_engine.core.approvals.models import ApprovalRecord, DeliveryResult
+from ai_munimji_engine.core.approvals.render import render_plain
+from ai_munimji_engine.core.approvals.channels.base import Channel
 
 log = logging.getLogger(__name__)
 

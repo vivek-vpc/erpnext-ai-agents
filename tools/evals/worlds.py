@@ -8,9 +8,9 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any, Optional
 
 from erp_agents.core.bootstrap import build_app
-from erp_agents.core.common import Actor
+from ai_munimji_engine.core.common import Actor
 from erp_agents.core.config import DEFAULT_CONFIG
-from erp_agents.core.erp.base import CountLine, ReceiptLine
+from ai_munimji_engine.packs.stock_procurement.erp import CountLine, ReceiptLine
 from erp_agents.core.erp.mock import MockERP
 
 from .cases import Case

@@ -7,7 +7,7 @@ from datetime import timedelta
 import pytest
 
 from conftest import OWNER
-from erp_agents.core.erp.base import CountLine, ReceiptLine
+from ai_munimji_engine.packs.stock_procurement.erp import CountLine, ReceiptLine
 from erp_agents.core.erp.mock import MockERP
 from erp_agents.packs.stock_procurement.assistant.chat import understand
 

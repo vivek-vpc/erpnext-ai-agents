@@ -13,13 +13,13 @@ import logging
 import math
 from typing import Any, Optional
 
-from erp_agents.core import acting
-from erp_agents.core.approvals.models import ApprovalRecord, Decision, DecisionRefused
-from erp_agents.core.approvals.service import KindHandler, parse_approver
-from erp_agents.core.common import iso, short_id, untrusted
-from erp_agents.core.erp.base import StockTransferDraft
-from .analysis import _n, where_stock_is
-from .messages import KIND_TRANSFER, build_transfer_request
+from ai_munimji_engine.core import acting
+from ai_munimji_engine.core.approvals.models import ApprovalRecord, Decision, DecisionRefused
+from ai_munimji_engine.core.approvals.service import KindHandler, parse_approver
+from ai_munimji_engine.core.common import iso, short_id, untrusted
+from ai_munimji_engine.packs.stock_procurement.erp import StockTransferDraft
+from ai_munimji_engine.packs.stock_procurement.inventory.analysis import _n, where_stock_is
+from ai_munimji_engine.packs.stock_procurement.inventory.messages import KIND_TRANSFER, build_transfer_request
 
 log = logging.getLogger(__name__)
 OPEN = ("proposed",)
@@ -35,24 +35,17 @@ class StockTransfers:
 
     # ---------------------------------------------------------------- records
     def get(self, transfer_id: str) -> Optional[dict[str, Any]]:
-        row = self.app.db.query_one("SELECT * FROM stock_transfers WHERE id=?", (transfer_id,))
-        return dict(row) if row else None
+        return self.app.stock_stores.transfers.get(transfer_id)
 
     def by_approval(self, approval_id: str) -> Optional[dict[str, Any]]:
-        row = self.app.db.query_one("SELECT * FROM stock_transfers WHERE approval_id=?", (approval_id,))
-        return dict(row) if row else None
+        return self.app.stock_stores.transfers.by_approval(approval_id)
 
     def list(self, status: Optional[str] = None, limit: int = 20) -> list[dict[str, Any]]:
-        if status:
-            rows = self.app.db.query("SELECT * FROM stock_transfers WHERE status=? ORDER BY created_at DESC LIMIT ?", (status, limit))
-        else:
-            rows = self.app.db.query("SELECT * FROM stock_transfers ORDER BY created_at DESC LIMIT ?", (limit,))
-        return [dict(r) for r in rows]
+        return self.app.stock_stores.transfers.list(status or None, limit)
 
     def _set(self, transfer_id: str, **fields: Any) -> None:
         fields["updated_at"] = iso(self.app.clock())
-        cols = ", ".join(f"{k}=?" for k in fields)
-        self.app.db.execute(f"UPDATE stock_transfers SET {cols} WHERE id=?", (*fields.values(), transfer_id))  # column names come from this module, values are bound  # nosec B608
+        self.app.stock_stores.transfers.update(transfer_id, fields)
 
     # ---------------------------------------------------------------- 1. prepare
     def warehouse(self, text: str, known: list[str]) -> tuple[Optional[str], str]:
@@ -110,9 +103,8 @@ class StockTransfers:
         tid, now = short_id(8), iso(self.app.clock())
         req = build_transfer_request(tid, item, float(qty), src, dst, {"on_hand": have.on_hand, "reserved": have.reserved},
                                      {"on_hand": there.on_hand if there else 0.0, "reserved": there.reserved if there else 0.0}, where, untrusted(reason, 300))
-        with self.app.db.transaction():
-            self.app.db.execute("INSERT INTO stock_transfers(id, item_code, qty, uom, from_warehouse, to_warehouse, status, reason, requested_by, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                                (tid, item.code, float(qty), item.uom, src, dst, "proposed", untrusted(reason, 300) or None, requested_by, now, now))
+        with self.app.stores.transaction():
+            self.app.stock_stores.transfers.insert(tid, item.code, float(qty), item.uom, src, dst, untrusted(reason, 300) or None, requested_by, now)
             record = self.app.approvals.submit(req, deliver=False)
             self._set(tid, approval_id=record.id)
         self.app.approvals.deliver(record)

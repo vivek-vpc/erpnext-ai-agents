@@ -4,13 +4,13 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
-from .. import metrics, obs
-from .channels.base import Channel
-from .models import DecisionResult, InboundEvent
-from .render import render_plain
-from ..common import untrusted
-from .router import ApprovalRouter
-from .service import ApprovalService
+from ai_munimji_engine.core import metrics, obs
+from ai_munimji_engine.core.approvals.channels.base import Channel
+from ai_munimji_engine.core.approvals.models import DecisionResult, InboundEvent
+from ai_munimji_engine.core.approvals.render import render_plain
+from ai_munimji_engine.core.common import untrusted
+from ai_munimji_engine.core.approvals.router import ApprovalRouter
+from ai_munimji_engine.core.approvals.service import ApprovalService
 
 log = logging.getLogger(__name__)
 

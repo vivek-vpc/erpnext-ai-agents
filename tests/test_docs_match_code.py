@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from erp_agents.core.packs import PackRegistry
-from erp_agents.core.toolkit import PREPARE, READ
+from ai_munimji_engine.core.packs import PackRegistry
+from ai_munimji_engine.core.toolkit import PREPARE, READ
 
 ROOT = Path(__file__).resolve().parent.parent
 COUNT_FILES = ["README.md", "docs/AGENTS.md", "src/erp_agents/packs/stock_procurement/README.md"]

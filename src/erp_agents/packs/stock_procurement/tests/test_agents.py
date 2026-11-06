@@ -17,9 +17,9 @@ from erp_agents.packs.stock_procurement.agents.purchase_agent import review_find
 from erp_agents.core.agents.runtime import Evidence, ToolRun, grounding_problems, substance_problems
 from erp_agents.core.approvals.channels.telegram import TelegramChannel
 from erp_agents.core.assistant.verify import NOT_ENOUGH
-from erp_agents.core.policy import AgentSettings
+from ai_munimji_engine.core.policy import AgentSettings
 from erp_agents.core.erp.mock import MockERP
-from erp_agents.packs.stock_procurement.tools import SPEC
+from ai_munimji_engine.packs.stock_procurement.tools import SPEC
 
 
 class FakeToolLLM:
@@ -537,7 +537,7 @@ def test_a_stock_alert_beside_its_reorder_suggestion_is_not_two_requests():
 
 
 def test_a_long_reason_is_cut_at_a_word_not_in_the_middle_of_one():
-    from erp_agents.core.toolkit import _clip
+    from ai_munimji_engine.core.toolkit import _clip
     text = "Not below any threshold yet, but at the expected usage of 11.03 litres/day you will reach the order point (lead time 7 + 3 safety days) in about 10.8 days (around 4 Nov)."
     cut = _clip(text, 120)
     assert len(cut) <= 120 and cut.endswith("\u2026") and text.startswith(cut[:-1].rstrip()) and not cut.endswith("(\u2026")

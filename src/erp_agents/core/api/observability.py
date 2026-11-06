@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Any, Awaitable, Callable
 
-from .. import obs
+from ai_munimji_engine.core import obs
 
 HEADER = b"x-request-id"
 

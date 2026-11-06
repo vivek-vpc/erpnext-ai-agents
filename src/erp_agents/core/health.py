@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional
 
-from .jobs import HEARTBEAT_STALE_MINUTES, MAINTENANCE_JOB
+from ai_munimji_engine.core.jobs import HEARTBEAT_STALE_MINUTES, MAINTENANCE_JOB
 
 
 @dataclass(frozen=True)
@@ -23,10 +23,7 @@ class Check:
 
 def readiness(app: Any, now: Optional[datetime] = None) -> list[Check]:
     now = now or app.clock()
-    ok, why = app.db.writable()
-    checks = [Check("database", ok, "accepts a write" if ok else f"cannot be written to ({why})")]
-    behind = [f"{who}: the file has version {have}, this version needs {need}" for who, have, need in app.db.schema_status() if have != need]
-    checks.append(Check("migrations", not behind, "the database is the shape this version needs" if not behind else "; ".join(behind)))
+    checks = [Check(name, ok, detail) for name, ok, detail in app.stores.health()]
     scheduler = getattr(app, "scheduler", None)
     if scheduler is None:
         checks.append(Check("scheduler", True, "not part of this process"))

@@ -7,20 +7,29 @@ the core and the edges are today, the rules for new code, and an audit of where 
 ## What the Marketplace requires (docs.frappe.io, checked 21 Oct 2026)
 
 - The app is open source (MIT or a GPL-compatible licence), hosted on GitHub, and published by its owner. The name must be unique across the Marketplace.
-- It supports the **current stable Frappe and ERPNext** version (v16 at the time of writing; v16 needs Python 3.14 according to community reports, so check the
-  official requirements before each release). Version-specific code branches on `frappe.__version__`.
+- It supports the **current stable Frappe and ERPNext** version (Frappe Cloud lists Versions 15 and 16 as Stable, 15 the default for new bench groups; v16 needs Python exactly 3.14,
+  read from Frappe's own files on 5 Nov 2026 ([FRAPPE_FACTS.md](FRAPPE_FACTS.md) 2); check again before each release). Version-specific code branches on `frappe.__version__`.
 - A **passing GitHub Actions (or similar) CI is mandatory.** Frappe recommends running Semgrep with its `frappe/semgrep-rules` locally.
 - **Do not override base Frappe functionality** (login and password-reset pages and the like): extend it through hooks.
-- The app has a settings DocType for its global behaviour.
+- A settings DocType for its global behaviour is recommended, not required ([FRAPPE_FACTS.md](FRAPPE_FACTS.md) 3, row 8).
 - Listing: short description of 40 to 80 characters (one sentence, not repeating the name), a long description without installation steps, a **square logo of at
-  least 200x200 px without text**, one category, a **support URL**, a **privacy policy URL**, and a short demo video for the reviewers. The app must not steer
-  users away from Frappe Cloud.
-- The privacy policy has to say exactly what leaves the site: request summaries to WhatsApp and Telegram, and question text to a language model when the
+  least 200x200 px without text**, one category, five links (**Website, Support, Documentation, Terms of Service, Privacy Policy**), screenshots, and a demo
+  video that is prepared and sent on request. The app must not steer users away from Frappe Cloud.
+- This project's own rule (it is not on the Marketplace pages): the privacy policy has to say exactly what leaves the site: request summaries to WhatsApp and Telegram, and question text to a language model when the
   assistant is on. For the AI agents and the MCP server that statement is generated from code and tested (`core/agents/privacy.py`, `src/erp_agents/packs/stock_procurement/tests/test_privacy.py`); the
   draft policy to adapt is at the end of [PRIVACY.md](PRIVACY.md). The agent features are off by default, and a model on another machine is refused unless the
   owner allows it, which is what lets the policy say "nothing leaves your site unless you turn it on".
 
 ## The structure: a shared core and switchable packs
+
+The code is in two packages of one repository (Phase 2 of the Frappe work). **`ai_munimji_engine`** (`engine/src/`, its own distribution `ai-munimji-engine`, which needs pydantic and PyYAML only) holds the rule logic:
+the approval service and the audit seal, the settings store, the tool registry, the stock pack's analysis, scoring, alerts, proposals, tools and agents, the ERP ports, the stores (Protocols with an
+in-memory class beside each) and the runtime (jobs, lock, chat memory). **`erp_agents`** (`src/`) is the standalone service built on it: the web application, the scheduler, the command line, the SQLite
+stores, the REST client for ERPNext, the channels, sign-in, the AI agents and the console. A module that moved keeps its place in the tree, so `core/audit.py` in the documents is
+`erp_agents/core/audit.py` or, for the 36 modules that moved (`tools/move_to_engine.py` lists them), `ai_munimji_engine/core/audit.py`. The engine never imports `erp_agents`
+(`tests/test_engine_imports.py` imports every engine module with only the engine on the path and with the web, the database and the network refused).
+
+The tree below is the one before the move; the modules in it that moved are the ones listed in `tools/move_to_engine.py`.
 
 ```
 src/erp_agents/
@@ -50,9 +59,9 @@ tests/                          the core's tests, including the boundary tests
 
 | Layer | What it holds | In the Frappe app |
 |---|---|---|
-| **Pure logic** (no web, scheduler, HTTP or SQL library) | in the stock pack: `inventory/analysis.py`, `procurement/scoring.py`, `inventory/messages.py`, `procurement/messages.py`, `assistant/chat.py` (`understand`, answer building), `agents/inventory_agent.py`, `agents/purchase_agent.py`; in the core: `assistant/facts.py`, `assistant/verify.py`, `approvals/models.py`, `policy.py`, `toolkit.py`, `agents/runtime.py` (the loop and its checks), `agents/privacy.py` | kept as is (shared library) |
-| **Ports** (interfaces the logic talks to) | `core/erp/base.py` (`ERPClient`), `core/approvals/channels/base.py` (`Channel`), `core/auth/` (`AuthProvider`), `core/assistant/llm.py` (`LLMClient`), `core/agents/llm.py` (`ToolChatClient`: Ollama, Claude, OpenAI, Gemini; keys come in through `core/config.py` only), the `*Repo` classes, `ApprovalService`, `SettingsStore`, `core/agents/store.py` (`AgentLog`) | kept; implementations change |
-| **Edges** (replaced) | `core/erp/erpnext.py` (REST and API key), `core/storage.py` (SQLite), `core/scheduler.py` (APScheduler, Telegram poller), `core/api/app.py` (FastAPI), the pack's `web/index.html` (console), `core/config.py` and `.env`, `core/mcp_server.py` and `core/agents/bridge.py` (MCP over stdio and HTTP), `core/agents/service.py` (threads) | `frappe.get_all/get_doc` in process; DocTypes; `hooks.py` `scheduler_events` and `frappe.enqueue`; whitelisted methods (the MCP endpoint behind Frappe's OAuth provider); Desk workspace and pages; Settings DocType with Password fields |
+| **Pure logic** (no web framework, scheduler or SQL; `tests/test_no_sqlite_in_the_domain.py` refuses `sqlite3` to every module that is not about SQLite; `assistant/chat.py` and the agent modules still reach `requests` through the model clients, which a bench provides) | in the stock pack: `inventory/analysis.py`, `procurement/scoring.py`, `inventory/messages.py`, `procurement/messages.py`, `assistant/chat.py` (`understand`, answer building), `agents/inventory_agent.py`, `agents/purchase_agent.py`; in the core: `assistant/facts.py`, `assistant/verify.py`, `approvals/models.py`, `policy.py`, `toolkit.py`, `agents/runtime.py` (the loop and its checks), `agents/privacy.py` | kept as is (shared library) |
+| **Ports** (interfaces the logic talks to) | `ai_munimji_engine/core/erp/base.py` (`ERPClient`: is the ERP reachable; `RecoveryERP`: find a document by its reference) and the stock pack's own port `ai_munimji_engine/packs/stock_procurement/erp.py` (`StockERP`, `PurchasingERP`, `FollowUpERP`, `TransferERP`), `core/approvals/channels/base.py` (`Channel`), `core/auth/` (`AuthProvider`), `core/assistant/llm.py` (`LLMClient`), `core/agents/llm.py` (`ToolChatClient`: Ollama, Claude, OpenAI, Gemini; keys come in through `core/config.py` only), the `*Store` Protocols of `ai_munimji_engine.stores` (one per group of tables: SQLite in `erp_agents/stores` and `packs/<name>/stores.py`, memory beside each Protocol), and the classes that take them: `ApprovalService`, `AlertRepo`, `SettingsStore`, `AgentLog` ... | kept; implementations change |
+| **Edges** (replaced) | `core/erp/erpnext.py` (REST and API key), `core/storage.py` and the `Sqlite*Store` classes (SQLite), `core/scheduler.py` (APScheduler, Telegram poller), `core/api/app.py` (FastAPI), the pack's `web/index.html` (console), `core/config.py` and `.env`, `core/mcp_server.py` and `core/agents/bridge.py` (MCP over stdio and HTTP), `core/agents/service.py` (threads) | `frappe.get_all/get_doc` in process; DocTypes; `hooks.py` `scheduler_events` and `frappe.enqueue`; whitelisted methods (the MCP endpoint behind Frappe's OAuth provider); Desk workspace and pages; Settings DocType with Password fields |
 
 ### What stays in the core, whatever the pack
 
@@ -68,15 +77,18 @@ These are the checks a pack cannot opt out of, because they live in the core and
 
 1. **The core never imports a pack.** It finds packs by reading their `manifest.yaml` files and loads one only through `erp_agents.packs.<name>.pack:PACK`.
 2. **A pack imports only the core and itself.** Never another pack. If sales needs a stock figure, it asks for it as a tool call through the core's registry.
-3. **The core does not hard-wire the stock pack's names.** The approval kinds, tool names and table names the stock pack owns (`inventory.alert`, `stock_overview`, `agent_runs`, `chat_log` and the like) must not appear in core code; the pack registers them. The ERP port is the known exception (see "Not done yet" below).
+3. **The core does not hard-wire the stock pack's names.** The approval kinds, tool names and table names the stock pack owns (`inventory.alert`, `stock_overview`, `agent_runs`, `chat_log` and the like) must not appear in core code; the pack registers them. The ERP port is no longer an exception: the stock pack's methods and types are in its own port, and `tests/test_erp_port.py` checks that the core's `ERPClient` names none of them.
 4. **A skeleton pack has no code.** `sales` and `finance` hold a manifest and a README only.
 
 `tests/test_pack_boundaries.py` checks all four by reading the source (rules 1, 2 and 4 by parsing the imports, rule 3 by searching for the banned names), so a violation fails the suite; `tests/test_pack_switch.py` proves the switch; `tests/test_order_gate.py` the gate.
 
 ## Rules for new code
 
-1. **No SQL outside a repository class.** A repository owns one kind of record (`ApprovalService`, `AlertRepo`, `ProposalRepo`, `NoticeRepo`, `WorkOrderQueue`,
-   `SettingsStore`). The port replaces each of them with DocType calls, so a stray `db.execute` somewhere else is work nobody will find.
+1. **No SQL outside a store.** A store is a Protocol in `ai_munimji_engine.stores` that owns one group of tables and speaks the domain's words (`ApprovalStore`, `AlertStore`, `ProposalStore` ...);
+   its SQLite class lives in `erp_agents/stores/` (the core) or `packs/<name>/stores.py` (a pack), with the SQL unchanged, and a `Memory*Store` beside the Protocol keeps the same rows in dicts.
+   `ApprovalService`, `AlertRepo`, `ProposalRepo`, `NoticeRepo`, `WorkOrderQueue`, `SettingsStore`, `AgentLog` and the rest take a store, never a database. The Frappe app gives them stores over
+   DocTypes, so a stray `db.execute` somewhere else is work nobody will find: `tests/test_no_sqlite_in_the_domain.py` fails if any module that is not about SQLite reaches `sqlite3`,
+   and `tests/test_store_contracts_core.py` and the pack's `test_store_contracts_stock.py` run every store on SQLite and in memory. A new store comes with its Protocol, both classes and a contract test.
 2. **The core imports no `fastapi`, `requests`, `apscheduler`, `sqlite3` or `threading`.** Talk to the world through a port.
 3. **A job is a plain function** (`run(...)`) that does one pass and returns. It never sleeps or loops. The scheduler decides when it runs (APScheduler today,
    `scheduler_events` and `frappe.enqueue` in Frappe). Work that can take long (a model call, a message send) must be possible to put on a queue: do not add
@@ -103,7 +115,7 @@ These are the checks a pack cannot opt out of, because they live in the core and
     be in the tools' results) and the job's own rules, and has a deterministic fallback that is shown instead when it fails. The part of an answer that decides
     something (the verdict, the table, the order of items) is computed by the program; the model words and comments.
 
-15. **An ERP read that a connection may not offer is optional.** The follow-up reads (receipts, open sales orders, supplier contacts, item alternatives, stock counts, stock values, e-mail through the ERP) are a separate protocol, `FollowUpERP` in `core/erp/base.py`, called through `getattr`; a feature whose read is missing says so instead of guessing, and an older or smaller ERP client keeps working.
+15. **An ERP read that a connection may not offer is optional.** The follow-up reads (receipts, open sales orders, supplier contacts, item alternatives, stock counts, stock values, e-mail through the ERP) are a separate protocol, `FollowUpERP` in the stock pack's ERP port (`ai_munimji_engine/packs/stock_procurement/erp.py`), called through `getattr`; a feature whose read is missing says so instead of guessing, and an older or smaller ERP client keeps working.
 16. **A pack depends only on the core.** It declares its tools, approvals, settings and ERPNext roles in its manifest, keeps its tests in its own folder, and never imports another pack. The core never imports a pack. See "How to add a pack" below.
 
 17. **What someone may need to follow is visible, and nothing private is in it.** A new log line about what the assistant did goes through `obs.event` (names, numbers, outcomes: never a question, an answer, a prompt, a document or a person); a new metric is registered in `core/metrics.py` with a bounded set of label values; a new span is `tracing.span` with names and counts; a new scheduled job is registered through `scheduler.tracked` and returns `False` when it failed. Never log a secret on the assumption that the scrubber will catch it. These modules import no web or scheduler library. The tables in [OBSERVABILITY.md](OBSERVABILITY.md) are compared with the code by a test (`tests/test_obs_docs.py`), so a metric, event or span that is not documented fails the build.
@@ -116,22 +128,31 @@ These are the checks a pack cannot opt out of, because they live in the core and
 
 (Paths are as of the restructure of 25 Oct 2026: the stock files are under `packs/stock_procurement/`, the shared ones under `core/`. Nothing in the audit changed with the move.)
 
-SQL outside the repository classes (rule 1), about a dozen calls, each easy to move behind a small class:
+SQL outside a store (rule 1). The first audit said "about a dozen calls"; the measurement of 5 Nov 2026 (a script over the syntax tree, [FRAPPE_FACTS.md](FRAPPE_FACTS.md) 6.2) found **180 SQL calls in 27 modules**, 36 modules that
+import `sqlite3`, and 19 groups of tables, most with their SQL inside a service class (`ApprovalService` held 25 calls, `AuditChain` 12, `DeliveryChaser` 10). **All of it is now behind stores** (Phase 2 of the Frappe work):
 
-| Where | What | Move to |
+| Group of tables | Protocol (`ai_munimji_engine.stores`) | Used by |
 |---|---|---|
-| `packs/stock_procurement/inventory/agent.py` (3), `packs/stock_procurement/procurement/agent.py` (1), `core/api/app.py` (1) | the `agent_runs` log | a `RunLog` repository |
-| `packs/stock_procurement/inventory/agent.py` | a read of `approvals` by kind; an update of `alerts.reasoning_text` | `ApprovalService.latest_of_kind`, `AlertRepo.set_reasoning` |
-| `packs/stock_procurement/assistant/chat.py` (2), `packs/stock_procurement/assistant/service.py` (3) | the `assistant_answers` cache; `chat_log` | an `AnswerCache` and a `ChatLog` repository |
+| `approvals`, `deliveries` | `ApprovalStore` | `ApprovalService`, the decision history, the monitor-down check |
+| `audit_chain` (reads the other two) | `AuditStore` | `AuditChain` |
+| `settings_overrides`, `settings_audit` | `SettingsOverrideStore` | `SettingsStore`, the decision history |
+| `agent_tasks`, `tool_calls` | `AgentLogStore` | `AgentLog` |
+| `work_orders`, `job_runs`, `inbound_seen` | `WorkOrderStore`, `JobRunStore`, `InboundSeenStore` | `WorkOrderQueue`, `JobLog`, `InboundLedger` |
+| `alerts`, `stock_notices`, `proposals`, `agent_runs` | `AlertStore`, `NoticeStore`, `ProposalStore`, `AgentRunStore` (`stores.stock`) | `AlertRepo`, `NoticeRepo`, `ProposalRepo`, the two agents, the runs route |
+| `assistant_answers`, `chat_log` | `AssistantStore` | `AssistantService`, `ChatService` |
+| `vendor_messages`, `vendor_replies`, `delivery_chases`, `receipt_checks`, `quote_rounds` | `VendorStore`, `ChaseStore`, `ReceiptStore`, `QuoteStore` | the follow-up (`VendorMessenger`, `DeliveryChaser`, `ReceiptChecker`, `QuoteRounds`) |
+| `stock_transfers`, `cycle_counts`, `count_reviews` | `TransferStore`, `CountStore` | `StockTransfers`, `CycleCounts` |
 
-Done already: the conversation no longer reads the `deliveries` table itself (`ApprovalService.approval_for_message`).
+What still touches SQLite directly is about SQLite itself: `core/storage.py` (the schema and its migrations), `core/ops.py` (backup, restore, verify), `core/doctor.py` (reads the file read-only) and the
+`Sqlite*Store` classes. The list is closed and tested.
 
-Threads and in-memory state (rules 2 and 3): the conversation worker pool and its "waiting for an answer" memory
-(`packs/stock_procurement/assistant/conversation.py`), the sign-in sessions (`core/auth/sessions.py`), the storage lock (`core/storage.py`) and the scheduler. In a multi-worker Frappe site
-these must live in the cache or the database, and the conversation's follow-up work becomes a queued job. (The chat throttle and the per-chat message limit, once two private deques, are since Phase 3 one `Limits` in `core/resilience.py` behind a `RateLimiter` interface, and the circuit breakers keep their state in a `BreakerStore`: a cache can replace either; see [RESILIENCE.md](RESILIENCE.md).)
-`core/agents/service.py` adds to that list: one agent task runs at a time behind a lock, and `submit` / `on_submitted` start a background thread so a web request or a
-new approval never waits minutes for a model. Each of those becomes a `frappe.enqueue` job (the task row already exists before the work starts, so polling by task
-id carries over unchanged). The tools, the runtime and the checks have no threads of their own.
+Threads and in-memory state (rules 2 and 3). **Behind interfaces since Phase 2 of the Frappe work** (`ai_munimji_engine/runtime.py`, built into the application as `app.runtime`): background work is a
+`JobRunner` (`ThreadJobRunner` for an agent task and the second opinion, `PoolJobRunner` for the conversation's two workers, `InlineJobRunner` for tests and for a caller that is itself a job); the
+one-agent-at-a-time lock is an `Exclusive`; what a person was just asked in the chat and which items their last answer was about are a `ConversationMemory`. A Frappe site gives them `frappe.enqueue`,
+a lock in the database or cache, and the cache (the task row already exists before the work starts, so polling by task id carries over unchanged). `tests/test_runtime.py` fails if any module other
+than the runtime and the scheduler starts a thread. What is left, and stays with the standalone service: the sign-in sessions (`core/auth/sessions.py`: a Frappe site has its own), the SQLite lock
+(`core/storage.py`) and the scheduler with its Telegram poller (a site has the scheduler of Frappe and webhooks). (The chat throttle and the per-chat message limit, once two private deques, are
+since Phase 3 one `Limits` in `core/resilience.py` behind a `RateLimiter` interface, and the circuit breakers keep their state in a `BreakerStore`: a cache can replace either; see [RESILIENCE.md](RESILIENCE.md).)
 
 HTTP libraries (rule 2) are confined to the edges: `core/erp/erpnext.py`, `core/auth/erpnext.py`, the Telegram and WhatsApp channels and `core/assistant/llm.py`. `fastapi` is
 imported only by `core/api/app.py`, `apscheduler` only by `core/scheduler.py`, and the environment is read only by `core/config.py`: those rules hold.
@@ -152,7 +173,7 @@ A pack is a folder under `src/erp_agents/packs/` that adds one area (sales, fina
 
    | Hook | Use it to |
    |---|---|
-   | `setup(app)` | build your services on `app.erp`, `app.db`, `app.settings`, `app.approvals`, `app.clock`; register settings (`app.settings.register_section`, `extend_system`, `register_scoped`), tables (`app.db.register_schema(owner, ddl, version, migrations)`), approval kinds and handlers (`app.approvals.register_handler`), tools (`app.toolkit.register(pack, spec, handler)`) and agent tasks (`app.agents.add_tasks`); expose services as `app.services[...]` |
+   | `setup(app)` | build your services on `app.erp`, `app.stores` (the storage: your own stores are built over `app.stores.backend`, see `packs/stock_procurement/stores.py`), `app.settings`, `app.approvals`, `app.clock`; register settings (`app.settings.register_section`, `extend_system`, `register_scoped`), approval kinds and handlers (`app.approvals.register_handler`), tools (`app.toolkit.register(pack, spec, handler)`) and agent tasks (`app.agents.add_tasks`); expose services as `app.services[...]` |
    | `routes(router, ctx, deps)` | add REST routes. The router answers 404 once the pack is off, after the usual sign-in check; use `deps.require(role)` for roles |
    | `mcp_tools(server, run)` | publish the tools over MCP with typed signatures; each calls `run(name, args)`, which applies the core's role checks |
    | `mcp_instructions()` | a sentence or two for AI clients about what the tools are for |
@@ -163,8 +184,8 @@ A pack is a folder under `src/erp_agents/packs/` that adds one area (sales, fina
 
 4. **Rules the core enforces for you.** Do not re-implement them, and do not try to bypass them:
    * Role checks on every tool call, the order gate for `prepare` tools, the grounding check on every agent answer and the switch all live in the core. A job that offers a `prepare` tool without a gate does not start.
-   * Write to the ERP only through `ERPClient`, only as a draft, with the approver recorded.
-   * Store data in your own tables, registered with `register_schema` (a version number and migrations; a database written by a newer version of your pack is refused, untouched).
+   * Write to the ERP only through your pack's own ERP port (a Protocol of the kind of `StockERP` and `PurchasingERP`; the core's `ERPClient` is only "is it reachable"), only as a draft, with the approver recorded.
+   * Store data through your own stores (rule 1). On SQLite the pack's tables are registered with `register_schema` (a version number and migrations; a database written by a newer version of your pack is refused, untouched) when its SQLite stores are built.
    * Settings and secrets come in through the settings object, never `os.environ`.
 5. **Put the tests next to the pack** in `packs/<name>/tests/`. The root `conftest.py` provides the shared fixtures (`make_app`, `clock`, the mock ERP); `pyproject.toml` already puts every pack's `tests/` folder on the test path. Run the pack alone with `python -m pytest src/erp_agents/packs/<name>/tests`.
 6. **Run the checks** in "Security checks" below. `tests/test_packs.py` and `tests/test_pack_boundaries.py` fail if the manifest is invalid, if what you register differs from what you declare, or if you import another pack.
@@ -172,7 +193,7 @@ A pack is a folder under `src/erp_agents/packs/` that adds one area (sales, fina
 
 ## Not done yet (Phase 2 left these on purpose)
 
-* **The `ERPClient` interface is still shaped by the stock pack** (it has methods for items, bins, purchase orders and quotations). A sales or finance pack will add its own methods to the port; they were not invented ahead of need.
+* **The ERP implementations are still shaped by the stock pack.** `ERPNextClient` and `MockERP` implement all of the stock pack's port in one class each (the interface was split in Phase 2 of the Frappe work, the implementations were not): a sales or finance pack will add its own port beside the stock one, and its methods to those classes or to classes of its own.
 * **One kind of scoped setting** ("policy": global, item group, item) is supported, with its old names kept so saved values still load.
 * **One conversation handler per application** (Telegram and WhatsApp messages go to the pack that provides it). A second chat-capable pack needs a small router.
 * **The console is one page** owned by the stock pack. A second pack with screens needs a place in the console's navigation.

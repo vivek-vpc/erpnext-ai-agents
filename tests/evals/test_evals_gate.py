@@ -9,7 +9,7 @@ pytest.importorskip("mcp", reason="the optional 'agents' extra is not installed"
 
 from erp_agents.core.agents import runtime
 from erp_agents.core.assistant import verify as verify_module
-from erp_agents.core.common import Actor
+from ai_munimji_engine.core.common import Actor
 from erp_agents.packs.stock_procurement.agents import purchase_agent
 from erp_agents.packs.stock_procurement.assistant import chat, service
 from evals_support import baseline  # noqa: F401 - the session fixture

@@ -19,9 +19,9 @@ from fastapi.testclient import TestClient
 from conftest import OWNER, FakeHTTP
 from erp_agents.core.api.app import create_app
 from erp_agents.core.api.hardening import access_key_mode, access_key_warning
-from erp_agents.core.common import untrusted
+from ai_munimji_engine.core.common import untrusted
 from erp_agents.core.netguard import blocked_target
-from erp_agents.core.policy import PROVIDER_URLS
+from ai_munimji_engine.core.policy import PROVIDER_URLS
 from erp_agents.core.erp.mock import MockERP
 
 STRONG = "s" * 40
@@ -150,7 +150,7 @@ def test_the_key_is_attached_only_at_the_providers_own_https_host(provider):
 
 
 def test_a_custom_address_never_receives_a_key_even_when_one_is_set():
-    from erp_agents.core.policy import AgentSettings
+    from ai_munimji_engine.core.policy import AgentSettings
     session = FakeHTTPWithGet()
     client = llm.make_client(AgentSettings(provider="openai", base_url="http://127.0.0.1:11434/v1", model="m"), {"openai": SECRET}, session)
     assert client.api_key == ""
@@ -316,15 +316,16 @@ def test_free_text_tool_arguments_are_capped_and_nothing_is_prepared(make_app):
 def test_the_tool_call_record_holds_no_control_characters(make_app):
     app = make_app(erp=MockERP())
     app.toolkit.call("stock_status", {"item_code": "BOLT-M8\x00\n", "junk\nname": 1}, OWNER)
-    rows = app.db.query("SELECT * FROM agent_tools") if app.db.query_one("SELECT name FROM sqlite_master WHERE name='agent_tools'") else []
+    rows = app.agent_log.tool_calls(limit=20)
+    assert rows
     for row in rows:
-        assert not any(c in json.dumps(dict(row)) for c in ("\\n", "\\u0000"))
+        assert not any(ord(ch) < 32 for value in row.values() for ch in str(value))             # not one raw control character is kept
 
 
 def test_log_lines_from_strangers_are_cleaned(make_app, caplog):
     from erp_agents.core.approvals.channels.simple import InboxChannel
     from erp_agents.core.approvals.inbound import process_inbound
-    from erp_agents.core.approvals.models import InboundEvent
+    from ai_munimji_engine.core.approvals.models import InboundEvent
     tg = __import__("erp_agents.core.approvals.channels.telegram", fromlist=["TelegramChannel"]).TelegramChannel("123:T", http=FakeHTTP())
     app = make_app(erp=MockERP(), channels={"telegram": tg, "inbox": InboxChannel()})
     with caplog.at_level(logging.WARNING):
@@ -379,7 +380,7 @@ def webhook_world(make_app):
 
 @pytest.mark.parametrize("headers", [{}, {"X-Hub-Signature-256": "sha256=" + "0" * 64}, {"X-Hub-Signature-256": "garbage"}])
 def test_a_forged_whatsapp_webhook_is_refused_and_changes_nothing(make_app, headers):
-    from erp_agents.core.approvals.channels.base import encode_action
+    from ai_munimji_engine.core.approvals.channels.base import encode_action
     app, rec, c = webhook_world(make_app)
     body = {"entry": [{"changes": [{"value": {"messages": [{"from": "919800000000", "type": "interactive",
                                                            "interactive": {"type": "button_reply", "button_reply": {"id": encode_action(rec.id, "approve")}}}]}}]}]}
@@ -389,7 +390,7 @@ def test_a_forged_whatsapp_webhook_is_refused_and_changes_nothing(make_app, head
 
 @pytest.mark.parametrize("secret", [None, "", "wrong", "the-real-webhook-secre"])
 def test_a_forged_telegram_webhook_is_refused_and_changes_nothing(make_app, secret):
-    from erp_agents.core.approvals.channels.base import encode_action
+    from ai_munimji_engine.core.approvals.channels.base import encode_action
     app, rec, c = webhook_world(make_app)
     body = {"update_id": 1, "callback_query": {"id": "q", "from": {"id": 555}, "message": {"message_id": 1, "chat": {"id": 555}}, "data": encode_action(rec.id, "approve")}}
     r = c.post("/webhooks/telegram", json=body, headers={"X-Telegram-Bot-Api-Secret-Token": secret} if secret is not None else {})

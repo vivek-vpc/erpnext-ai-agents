@@ -22,7 +22,7 @@ from erp_agents.core.erp.mock import MockERP
 
 RAW = bool(os.environ.get("OBS_RAW"))
 if not RAW:
-    from erp_agents.core import obs
+    from ai_munimji_engine.core import obs
 
 ACCESS_KEY = "AK-sentinel-4f9c2a71b3d84e6f90ab"
 HASH_KEY = "hash-sentinel-0123456789abcdef0123456789"

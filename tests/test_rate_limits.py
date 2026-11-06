@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from conftest import FakeHTTP
-from erp_agents.core import metrics
+from ai_munimji_engine.core import metrics
 from erp_agents.core.api.app import create_app
 from erp_agents.core.approvals.channels.simple import InboxChannel
 from erp_agents.core.approvals.channels.whatsapp import WhatsAppChannel

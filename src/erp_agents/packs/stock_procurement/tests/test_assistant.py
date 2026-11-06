@@ -8,9 +8,9 @@ from conftest import APPROVER, OWNER, FakeResponse
 from erp_agents.core.api.app import create_app
 from erp_agents.core.assistant.llm import LLMError, OllamaClient
 from erp_agents.core.assistant.verify import NOT_ENOUGH
-from erp_agents.core.policy import AssistantSettings
-from erp_agents.core.settings_store import SettingsError
-from erp_agents.core.workorders import REORDER_NEEDED
+from ai_munimji_engine.core.policy import AssistantSettings
+from ai_munimji_engine.core.settings_store import SettingsError
+from ai_munimji_engine.core.workorders import REORDER_NEEDED
 from erp_agents.core.erp.mock import MockERP
 
 
@@ -147,7 +147,7 @@ def test_rejected_answers_are_also_stored_so_the_result_is_repeatable(world):
     llm.replies.append({"answerable": True, "answer": "You have 450 pcs.", "facts_used": ["F1"]})
     assert ask(app, bolt.id, "q")["status"] == "rejected"
     assert ask(app, bolt.id, "q")["status"] == "rejected" and len(llm.calls) == 1
-    row = app.db.query_one("SELECT result_json FROM assistant_answers")
+    (row,) = app.stock_stores.assistant.answers_for(bolt.id)
     assert "450" in json.loads(row["result_json"])["draft"]                      # kept for audit, never shown
 
 

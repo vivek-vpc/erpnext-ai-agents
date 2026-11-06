@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .common import untrusted
+from ai_munimji_engine.core.common import untrusted
 
 OPEN, CLOSE = "\u27e6", "\u27e7"           # the marks (mathematical white square brackets): rare in business text, and removed from everything that is put between them
 

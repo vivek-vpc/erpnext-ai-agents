@@ -10,7 +10,7 @@ from conftest import OWNER, VIEWER
 from erp_agents.core.api.app import create_app
 from erp_agents.core.cli import main
 from erp_agents.core.erp.mock import MockERP
-from erp_agents.core.packs import PackError, PackRegistry
+from ai_munimji_engine.core.packs import PackError, PackRegistry
 from erp_agents.core.scheduler import AgentScheduler
 
 TOKENS = [{"token": "o" * 40, "user": "owner", "roles": ["viewer", "approver", "admin"]}]
@@ -34,7 +34,7 @@ def pack_off(app):
 def test_the_stock_pack_is_on_by_default_and_its_parts_are_there(make_app, clock):
     app = build(make_app, clock)
     assert app.packs.enabled_names() == [STOCK] and STOCK in app.packs.loaded
-    assert sorted(app.services) == ["alerts", "assistant", "chat", "followup", "inventory", "procurement", "proposals", "stock_insight", "transfers"]
+    assert sorted(app.services) == ["alerts", "assistant", "chat", "followup", "inventory", "procurement", "proposals", "stock_insight", "stock_stores", "transfers"]
     assert app.toolkit.registered_for(STOCK) == {t.name: (t.role, t.effect) for t in app.packs.manifests[STOCK].tools}
 
 

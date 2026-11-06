@@ -1,8 +1,8 @@
 """Moving stock between warehouses, at the ERPNext adapter: a DRAFT Stock Entry of type Material Transfer, safe to retry, with the approver recorded (fake HTTP session)."""
 import json
 
-from erp_agents.core.acting import ActingAs
-from erp_agents.core.erp.base import StockTransferDraft
+from ai_munimji_engine.core.acting import ActingAs
+from ai_munimji_engine.packs.stock_procurement.erp import StockTransferDraft
 from erp_agents.core.erp.erpnext import ERPNextClient
 
 

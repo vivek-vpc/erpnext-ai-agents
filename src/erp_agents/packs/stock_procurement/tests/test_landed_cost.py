@@ -9,14 +9,14 @@ from fastapi.testclient import TestClient
 from conftest import APPROVER, OWNER
 from erp_agents.core.api.app import create_app
 from erp_agents.core.assistant.facts import build_facts
-from erp_agents.packs.stock_procurement.settings import ProcurementSettings
-from erp_agents.core.workorders import REORDER_NEEDED
-from erp_agents.core.erp.base import PurchaseOrderDraft, TaxRow, TaxSetup, VendorOffer
+from ai_munimji_engine.packs.stock_procurement.settings import ProcurementSettings
+from ai_munimji_engine.core.workorders import REORDER_NEEDED
+from ai_munimji_engine.packs.stock_procurement.erp import PurchaseOrderDraft, TaxRow, TaxSetup, VendorOffer
 from erp_agents.core.erp.erpnext import ERPNextClient
 from erp_agents.core.erp.mock import MockERP
-from erp_agents.packs.stock_procurement.procurement import taxes
-from erp_agents.packs.stock_procurement.procurement.messages import build_po_request
-from erp_agents.packs.stock_procurement.procurement.scoring import Need, rank_vendors
+from ai_munimji_engine.packs.stock_procurement.procurement import taxes
+from ai_munimji_engine.packs.stock_procurement.procurement.messages import build_po_request
+from ai_munimji_engine.packs.stock_procurement.procurement.scoring import Need, rank_vendors
 
 TODAY = date(2026, 10, 16)
 
@@ -204,9 +204,7 @@ def test_ask_why_can_explain_the_duties(world):
 
 def test_settings_the_owner_used_to_write_are_gone_and_old_saves_cannot_break_loading(world):
     app, _ = world
-    app.db.execute("INSERT INTO settings_overrides(scope_type, scope_key, data_json, updated_by, updated_at) VALUES ('procurement','*',?,?,?) "
-                   "ON CONFLICT(scope_type, scope_key) DO UPDATE SET data_json=excluded.data_json",
-                   (json.dumps({"tax_rules": [{"name": "old"}], "home_country": "India", "weight_cost": 77}), "owner", "2026-10-01T00:00:00+00:00"))
+    app.stores.settings.save("procurement", "*", json.dumps({"tax_rules": [{"name": "old"}], "home_country": "India", "weight_cost": 77}), "owner", "2026-10-01T00:00:00+00:00", [])
     s = app.settings.procurement()
     assert s.weight_cost == 77 and not hasattr(s, "tax_rules") and not hasattr(s, "home_country")
     with pytest.raises(Exception, match="Unknown procurement field"):

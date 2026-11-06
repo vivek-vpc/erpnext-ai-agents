@@ -644,7 +644,7 @@ def check(config: str, today: date) -> None:
     import tempfile
 
     from erp_agents.core.bootstrap import build_app
-    from erp_agents.core.common import Actor
+    from ai_munimji_engine.core.common import Actor
     from erp_agents.core.config import load_config
     cfg = copy.deepcopy(load_config(config))
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:           # Windows keeps the throw-away database locked a moment after it is closed

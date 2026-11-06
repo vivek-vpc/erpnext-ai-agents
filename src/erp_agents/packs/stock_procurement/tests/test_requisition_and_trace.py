@@ -9,14 +9,14 @@ from conftest import APPROVER, OWNER
 from erp_agents.core.api.app import create_app
 from erp_agents.core.auth.erpnext import ErpNextLogin
 from erp_agents.core.auth.sessions import LoginThrottle, SessionStore
-from erp_agents.core import acting
-from erp_agents.core.acting import ActingAs
-from erp_agents.packs.stock_procurement.settings import ProcurementSettings
-from erp_agents.core.workorders import REORDER_NEEDED
-from erp_agents.core.erp.base import PurchaseOrderDraft, RequisitionDraft
+from ai_munimji_engine.core import acting
+from ai_munimji_engine.core.acting import ActingAs
+from ai_munimji_engine.packs.stock_procurement.settings import ProcurementSettings
+from ai_munimji_engine.core.workorders import REORDER_NEEDED
+from ai_munimji_engine.packs.stock_procurement.erp import PurchaseOrderDraft, RequisitionDraft
 from erp_agents.core.erp.erpnext import ERPNextClient
 from erp_agents.core.erp.mock import MockERP
-from erp_agents.packs.stock_procurement.procurement.messages import KIND_PO, KIND_PR, route_for
+from ai_munimji_engine.packs.stock_procurement.procurement.messages import KIND_PO, KIND_PR, route_for
 from test_auth_erpnext import FakeErp
 from test_landed_cost import ABROAD, COST_ONLY, LOCAL, offer, wo
 

@@ -10,7 +10,7 @@ import re
 from typing import Any, Callable, Optional
 
 from ..assistant.chat import wants_order
-from erp_agents.core.common import fmt_num
+from ai_munimji_engine.core.common import fmt_num
 from erp_agents.core.assistant.verify import numbers
 from erp_agents.core.prompting import MAX_QUESTION, data
 from .inventory_agent import RULES

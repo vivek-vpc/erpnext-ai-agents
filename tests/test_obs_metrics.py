@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from requests.adapters import BaseAdapter
 
 from conftest import OWNER, VIEWER
-from erp_agents.core import metrics, obs
+from ai_munimji_engine.core import metrics, obs
 from erp_agents.core.agents.llm import OllamaToolClient, Reply
 from erp_agents.core.api.app import create_app
 from erp_agents.core.assistant.llm import LLMError

@@ -30,7 +30,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "httpx>=0.27", "bandit>=1.8", "pip-audit>=2.7"]
+dev = ["pytest>=8", "httpx>=0.27", "bandit>=1.8", "pip-audit>=2.7", "tomli>=2; python_version < '3.11'"]
 agents = ["mcp>=2.3,<3", "jsonschema>=4.20"]       # the AI agents and the MCP server (MIT-licensed SDK); everything else works without it
 otel = ["opentelemetry-api>=1.30,<2", "opentelemetry-sdk>=1.30,<2", "opentelemetry-exporter-otlp-proto-http>=1.30,<2"]       # optional tracing (observability.tracing: true); docs/OBSERVABILITY.md
 
@@ -45,7 +45,7 @@ erp-agents = "erp_agents.core.cli:main"
 erpnext-ai-agents = "erp_agents.core.cli:main"            # the same command under the repository's name
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["src", "engine/src"]             # the standalone service (erp_agents) and the engine it is built on (ai_munimji_engine): one wheel, one source tree
 
 [tool.setuptools.package-data]
 erp_agents = ["settings.example.yaml", "packs/stock_procurement/web/*", "packs/*/manifest.yaml", "packs/*/README.md"]
@@ -54,4 +54,5 @@ erp_agents = ["settings.example.yaml", "packs/stock_procurement/web/*", "packs/*
 # core and cross-cutting tests live in tests/; each pack keeps its own next to its code. conftest.py (the shared fixtures) is at the repository root, and every test folder is on the
 # path so a test can borrow a helper from a test in another folder.
 testpaths = ["tests", "src/erp_agents/packs"]
-pythonpath = ["src", ".", "tests", "src/erp_agents/packs/stock_procurement/tests"]
+markers = ["sqlite_only: about SQLite itself (the schema, its migrations, a backup, the doctor): not run again when the suite is set to another storage"]
+pythonpath = ["src", "engine/src", ".", "tests", "src/erp_agents/packs/stock_procurement/tests"]

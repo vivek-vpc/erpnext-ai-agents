@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from erp_agents.core.packs import PackError, PackRegistry, PackSettings, load_manifest, parse_manifest
+from ai_munimji_engine.core.packs import PackError, PackRegistry, PackSettings, load_manifest, parse_manifest
 
 GOOD = {"name": "demo", "version": "1.0.0", "title": "Demo", "summary": "A demo pack.", "tools": [{"name": "demo_look", "role": "viewer", "effect": "read"}],
         "approvals": [{"kind": "demo.thing", "actions": ["ack"], "role": "approver", "description": "A thing."}], "settings": [{"section": "demo", "description": "x"}]}

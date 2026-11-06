@@ -15,7 +15,7 @@ from requests.adapters import BaseAdapter
 pytest.importorskip("mcp", reason="the optional 'agents' extra is not installed")
 
 from conftest import OWNER, VIEWER, APPROVER
-from erp_agents.core import obs
+from ai_munimji_engine.core import obs
 from erp_agents.core.agents.llm import Reply
 from erp_agents.core.api.app import create_app
 from erp_agents.core.erp.erpnext import ERPNextClient

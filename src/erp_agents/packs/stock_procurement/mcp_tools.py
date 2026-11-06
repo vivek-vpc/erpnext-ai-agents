@@ -11,7 +11,7 @@ from mcp.server import MCPServer
 from pydantic import Field
 
 from erp_agents.core.mcp_server import PREPARES, READ_ONLY
-from .tools import SPEC
+from ai_munimji_engine.packs.stock_procurement.tools import SPEC
 
 INSTRUCTIONS = ("Stock Assistant for ERPNext: stock position, usage, vendor comparison and purchase-order status for a small business, plus late deliveries, goods receipt "
                 "checks, a vendor scorecard, demand forecasts, slow and dead stock, approved substitutes and cycle counts. "

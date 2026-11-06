@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-munimji-engine"
+version = "0.1.0"
+description = "The rule logic of AI Munimji: stock analysis, vendor scoring, purchase-request approvals and the stores they use. Pure Python: no web server, no database driver, no network call."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+authors = [{ name = "The erpnext-ai-agents authors" }]
+keywords = ["erpnext", "frappe", "inventory", "procurement", "reorder", "approvals"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Information Technology",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Office/Business",
+]
+# Only what a Frappe bench already carries or tolerates (it shares one Python environment with the customer's other apps). tests/test_engine_imports.py fails if this list grows
+# or if the code imports anything else that is not in the standard library.
+dependencies = [
+    "pydantic>=2.5",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+tzdata = ["tzdata"]                    # the time zone database, for a system that has none (Windows); zoneinfo needs it there
+otel = ["opentelemetry-api>=1.30,<2", "opentelemetry-sdk>=1.30,<2", "opentelemetry-exporter-otlp-proto-http>=1.30,<2"]       # optional tracing (core/tracing.py imports it only when it is switched on)
+
+[project.urls]
+Homepage = "https://github.com/vivek-vpc/erpnext-ai-agents"
+Repository = "https://github.com/vivek-vpc/erpnext-ai-agents"
+Issues = "https://github.com/vivek-vpc/erpnext-ai-agents/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]

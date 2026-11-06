@@ -1,0 +1,221 @@
+{
+ "about": "What a new database holds: every table and index with its SQL text, and the versions. Made by the code of 5 Nov 2026 before the engine was split off (78372cb); tests/test_schema_unchanged.py fails if a change alters it without a numbered migration.",
+ "schema": [
+  [
+   "index",
+   "idx_alerts_item",
+   "CREATE INDEX idx_alerts_item ON alerts(item_code, created_at)"
+  ],
+  [
+   "index",
+   "idx_alerts_status",
+   "CREATE INDEX idx_alerts_status ON alerts(status)"
+  ],
+  [
+   "index",
+   "idx_approvals_status",
+   "CREATE INDEX idx_approvals_status ON approvals(status)"
+  ],
+  [
+   "index",
+   "idx_assistant_approval",
+   "CREATE INDEX idx_assistant_approval ON assistant_answers(approval_id, created_at)"
+  ],
+  [
+   "index",
+   "idx_deliveries_approval",
+   "CREATE INDEX idx_deliveries_approval ON deliveries(approval_id)"
+  ],
+  [
+   "index",
+   "idx_notices_item",
+   "CREATE INDEX idx_notices_item ON stock_notices(item_code, created_at)"
+  ],
+  [
+   "index",
+   "idx_proposals_item",
+   "CREATE INDEX idx_proposals_item ON proposals(item_code, created_at)"
+  ],
+  [
+   "index",
+   "idx_proposals_status",
+   "CREATE INDEX idx_proposals_status ON proposals(status)"
+  ],
+  [
+   "index",
+   "idx_quote_rounds_item",
+   "CREATE INDEX idx_quote_rounds_item ON quote_rounds(item_code, status)"
+  ],
+  [
+   "index",
+   "idx_stock_transfers_item",
+   "CREATE INDEX idx_stock_transfers_item ON stock_transfers(item_code, status)"
+  ],
+  [
+   "index",
+   "idx_vendor_messages_hash",
+   "CREATE INDEX idx_vendor_messages_hash ON vendor_messages(address_hash)"
+  ],
+  [
+   "index",
+   "idx_vendor_messages_ref",
+   "CREATE INDEX idx_vendor_messages_ref ON vendor_messages(purpose, ref_id)"
+  ],
+  [
+   "index",
+   "ix_agent_tasks_agent",
+   "CREATE INDEX ix_agent_tasks_agent ON agent_tasks(agent, started_at)"
+  ],
+  [
+   "index",
+   "ix_agent_tasks_approval",
+   "CREATE INDEX ix_agent_tasks_approval ON agent_tasks(approval_id)"
+  ],
+  [
+   "index",
+   "ix_audit_chain_ref",
+   "CREATE INDEX ix_audit_chain_ref ON audit_chain(source, ref_id)"
+  ],
+  [
+   "table",
+   "agent_runs",
+   "CREATE TABLE agent_runs ( id TEXT PRIMARY KEY, agent TEXT NOT NULL, started_at TEXT NOT NULL, finished_at TEXT, dry_run INTEGER NOT NULL DEFAULT 0, summary_json TEXT )"
+  ],
+  [
+   "table",
+   "agent_tasks",
+   "CREATE TABLE agent_tasks ( id TEXT PRIMARY KEY, agent TEXT NOT NULL, -- inventory | purchasing task TEXT NOT NULL, -- brief | review | ask status TEXT NOT NULL, -- ok | rejected | fallback | failed started_at TEXT NOT NULL, finished_at TEXT, model TEXT, provider TEXT, -- ollama | anthropic | openai | gemini remote INTEGER NOT NULL DEFAULT 0, steps INTEGER NOT NULL DEFAULT 0, tool_calls INTEGER NOT NULL DEFAULT 0, llm_seconds REAL, prompt_tokens INTEGER, output_tokens INTEGER, approval_id TEXT, asked_by TEXT, request_text TEXT, result_json TEXT, note TEXT, trace_json TEXT -- the messages sent to the model and its replies (pruned after agents.keep_traces_days) )"
+  ],
+  [
+   "table",
+   "alerts",
+   "CREATE TABLE alerts ( id TEXT PRIMARY KEY, item_code TEXT NOT NULL, kind TEXT NOT NULL, -- BREACH | EARLY_WARNING severity INTEGER NOT NULL, status TEXT NOT NULL, -- awaiting|snoozed|dismissed|actioned|resolved|superseded|expired|cancelled created_at TEXT NOT NULL, updated_at TEXT NOT NULL, analysis_json TEXT NOT NULL, reasoning_text TEXT NOT NULL, approval_id TEXT, snoozed_until TEXT, suppress_until TEXT, cooldown_until TEXT, status_note TEXT, run_id TEXT )"
+  ],
+  [
+   "table",
+   "approvals",
+   "CREATE TABLE approvals ( id TEXT PRIMARY KEY, kind TEXT NOT NULL, status TEXT NOT NULL, -- pending|decided|expired|cancelled request_json TEXT NOT NULL, decision_json TEXT, ref_type TEXT, ref_id TEXT, created_at TEXT NOT NULL, expires_at TEXT, decided_at TEXT, last_reminder_at TEXT, reminder_count INTEGER NOT NULL DEFAULT 0, status_note TEXT )"
+  ],
+  [
+   "table",
+   "assistant_answers",
+   "CREATE TABLE assistant_answers ( cache_key TEXT PRIMARY KEY, -- hash of model + prompt version + facts + question: same input -> same answer approval_id TEXT NOT NULL, question TEXT NOT NULL, result_json TEXT NOT NULL, -- what the person was shown, including the check outcome model TEXT NOT NULL, asked_by TEXT NOT NULL, created_at TEXT NOT NULL )"
+  ],
+  [
+   "table",
+   "audit_chain",
+   "CREATE TABLE audit_chain ( seq INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, source TEXT NOT NULL, -- approval | setting ref_id TEXT NOT NULL, event TEXT NOT NULL, -- decided | expired | cancelled | changed | sealed (closed before the chain existed) digest TEXT NOT NULL, -- sha256 of the record as it was prev TEXT NOT NULL, hash TEXT NOT NULL )"
+  ],
+  [
+   "table",
+   "chat_log",
+   "CREATE TABLE chat_log ( id INTEGER PRIMARY KEY AUTOINCREMENT, asked_by TEXT NOT NULL, asked_at TEXT NOT NULL, question TEXT NOT NULL, intent TEXT NOT NULL, status TEXT NOT NULL, source TEXT NOT NULL -- rules | ai-routed )"
+  ],
+  [
+   "table",
+   "count_reviews",
+   "CREATE TABLE count_reviews ( document TEXT NOT NULL, item_code TEXT NOT NULL, warehouse TEXT NOT NULL, variance REAL NOT NULL, approval_id TEXT, reviewed_at TEXT NOT NULL, PRIMARY KEY (document, item_code, warehouse) )"
+  ],
+  [
+   "table",
+   "cycle_counts",
+   "CREATE TABLE cycle_counts ( item_code TEXT PRIMARY KEY, abc_class TEXT NOT NULL, -- A | B | C last_counted_on TEXT, due_on TEXT NOT NULL, planned_on TEXT, -- the week it was last put on a count list updated_at TEXT NOT NULL )"
+  ],
+  [
+   "table",
+   "deliveries",
+   "CREATE TABLE deliveries ( id INTEGER PRIMARY KEY AUTOINCREMENT, approval_id TEXT NOT NULL, recipient_id TEXT NOT NULL, channel TEXT NOT NULL, address TEXT, status TEXT NOT NULL, -- sent|failed|given_up external_id TEXT, error TEXT, attempts INTEGER NOT NULL DEFAULT 1, sent_at TEXT NOT NULL )"
+  ],
+  [
+   "table",
+   "delivery_chases",
+   "CREATE TABLE delivery_chases ( po_name TEXT PRIMARY KEY, supplier TEXT NOT NULL, item_code TEXT, status TEXT NOT NULL, -- open | arrived | dismissed first_late_on TEXT NOT NULL, asked_at TEXT, -- when a person was last asked whether to chase asks INTEGER NOT NULL DEFAULT 0, sent_at TEXT, -- when the vendor was last sent a reminder sends INTEGER NOT NULL DEFAULT 0, approval_id TEXT, updated_at TEXT NOT NULL )"
+  ],
+  [
+   "table",
+   "inbound_seen",
+   "CREATE TABLE inbound_seen ( channel TEXT NOT NULL, -- whatsapp | telegram external_id TEXT NOT NULL, -- the id the channel gave the message (WhatsApp's message id, Telegram's update id) seen_at TEXT NOT NULL, -- when it was first seen (UTC): ids are forgotten after a few days PRIMARY KEY (channel, external_id) )"
+  ],
+  [
+   "table",
+   "job_runs",
+   "CREATE TABLE job_runs ( job TEXT PRIMARY KEY, -- the scheduler's id for the job (approval_maintenance, inventory_check ...) last_start TEXT, -- when its last run began (UTC) last_end TEXT, -- when it ended last_ok INTEGER, -- 1 = ended well, 0 = failed last_error TEXT, -- the class of the failure, never its text runs INTEGER NOT NULL DEFAULT 0, failures INTEGER NOT NULL DEFAULT 0 )"
+  ],
+  [
+   "table",
+   "pack_schema",
+   "CREATE TABLE pack_schema ( pack TEXT PRIMARY KEY, -- the pack that owns some tables (core/packs.py) version INTEGER NOT NULL -- the shape of its tables: see Database.register_schema )"
+  ],
+  [
+   "table",
+   "proposals",
+   "CREATE TABLE proposals ( id TEXT PRIMARY KEY, work_order_id TEXT NOT NULL, item_code TEXT NOT NULL, status TEXT NOT NULL, -- awaiting|ordered|po_failed|snoozed|rejected|manual|acknowledged|expired|cancelled approval_id TEXT, supplier TEXT, supplier_name TEXT, qty REAL, rate REAL, total REAL, po_name TEXT, ranking_json TEXT, status_note TEXT, snoozed_until TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL )"
+  ],
+  [
+   "table",
+   "quote_rounds",
+   "CREATE TABLE quote_rounds ( id TEXT PRIMARY KEY, item_code TEXT NOT NULL, qty REAL NOT NULL, uom TEXT NOT NULL, suppliers_json TEXT NOT NULL, -- [{supplier, name}] asked for a price status TEXT NOT NULL, -- proposed | asked | compared | ordered | closed reply_by TEXT, asked_at TEXT, approval_id TEXT, -- the request to send the messages comparison_id TEXT, -- the request with the comparison requested_by TEXT NOT NULL, status_note TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL )"
+  ],
+  [
+   "table",
+   "receipt_checks",
+   "CREATE TABLE receipt_checks ( receipt TEXT PRIMARY KEY, supplier TEXT NOT NULL, status TEXT NOT NULL, -- clean | flagged | acknowledged problems_json TEXT, approval_id TEXT, checked_at TEXT NOT NULL )"
+  ],
+  [
+   "table",
+   "schema_info",
+   "CREATE TABLE schema_info (version INTEGER NOT NULL)"
+  ],
+  [
+   "table",
+   "settings_audit",
+   "CREATE TABLE settings_audit ( id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL, actor TEXT NOT NULL, scope_type TEXT NOT NULL, scope_key TEXT NOT NULL, field TEXT NOT NULL, old_json TEXT, new_json TEXT )"
+  ],
+  [
+   "table",
+   "settings_overrides",
+   "CREATE TABLE settings_overrides ( scope_type TEXT NOT NULL, -- global | group | item | system scope_key TEXT NOT NULL, data_json TEXT NOT NULL, updated_by TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (scope_type, scope_key) )"
+  ],
+  [
+   "table",
+   "stock_notices",
+   "CREATE TABLE stock_notices ( id TEXT PRIMARY KEY, item_code TEXT NOT NULL, level TEXT NOT NULL, -- LOW | URGENT status TEXT NOT NULL, -- sent | acknowledged | snoozed | cleared | superseded created_at TEXT NOT NULL, updated_at TEXT NOT NULL, approval_id TEXT, snoozed_until TEXT )"
+  ],
+  [
+   "table",
+   "stock_transfers",
+   "CREATE TABLE stock_transfers ( id TEXT PRIMARY KEY, -- also the reference written on the Stock Entry, so a retry finds it item_code TEXT NOT NULL, qty REAL NOT NULL, uom TEXT NOT NULL, from_warehouse TEXT NOT NULL, to_warehouse TEXT NOT NULL, status TEXT NOT NULL, -- proposed | created | rejected | expired | cancelled entry_name TEXT, -- the draft Stock Entry in the ERP reason TEXT, requested_by TEXT NOT NULL, approval_id TEXT, status_note TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL )"
+  ],
+  [
+   "table",
+   "tool_calls",
+   "CREATE TABLE tool_calls ( id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, actor TEXT NOT NULL, via TEXT NOT NULL, -- mcp-stdio | mcp-http | agent | api tool TEXT NOT NULL, args_json TEXT, ok INTEGER NOT NULL, ms INTEGER, task_id TEXT, error TEXT )"
+  ],
+  [
+   "table",
+   "vendor_messages",
+   "CREATE TABLE vendor_messages ( id TEXT PRIMARY KEY, purpose TEXT NOT NULL, -- chase | quote ref_id TEXT NOT NULL, -- the purchase order chased, or the quote round supplier TEXT NOT NULL, channel TEXT NOT NULL, -- email | whatsapp address_hash TEXT, -- keyed hash (HMAC-SHA256) of the vendor's number or address, to recognise a reply; no contact data is stored; erased when the reply window ends status TEXT NOT NULL, -- sent | failed error TEXT, approval_id TEXT, sent_by TEXT, sent_at TEXT NOT NULL, hash_kind TEXT, -- version 4: 'hmac1' = keyed; empty with a hash = the unkeyed SHA-256 of versions 1 to 3, kept only until its window ends closed_at TEXT -- version 4: when the order was received or the price round ended; a reply after this is not taken )"
+  ],
+  [
+   "table",
+   "vendor_replies",
+   "CREATE TABLE vendor_replies ( id INTEGER PRIMARY KEY AUTOINCREMENT, message_id TEXT NOT NULL, -- the vendor_messages row it answers supplier TEXT NOT NULL, purpose TEXT NOT NULL, ref_id TEXT NOT NULL, channel TEXT NOT NULL, text TEXT NOT NULL, -- what the vendor wrote (cleaned and capped); never given to a language model received_at TEXT NOT NULL, relayed INTEGER NOT NULL DEFAULT 0, -- version 4: 1 = passed on to the people who answered the request, 2 = the 'more replies' line, 0 = kept only text_hash TEXT -- version 4: SHA-256 of the text without case and spacing, to drop an identical reply )"
+  ],
+  [
+   "table",
+   "work_orders",
+   "CREATE TABLE work_orders ( id TEXT PRIMARY KEY, type TEXT NOT NULL, -- e.g. REORDER_NEEDED status TEXT NOT NULL, -- pending|claimed|done|failed payload_json TEXT NOT NULL, source TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL )"
+  ]
+ ],
+ "versions": {
+  "schema_info": [
+   3
+  ],
+  "pack_schema": [
+   [
+    "stock_procurement",
+    4
+   ]
+  ]
+ }
+}

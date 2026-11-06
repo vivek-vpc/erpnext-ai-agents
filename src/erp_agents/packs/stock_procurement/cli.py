@@ -8,12 +8,12 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from erp_agents.core.approvals.render import render_plain
+from ai_munimji_engine.core.approvals.render import render_plain
 from erp_agents.core.cli import CLI_ACTOR, pack_app, print_agent_result
-from erp_agents.core.packs import CliCommand
-from erp_agents.core.settings_store import SettingsError
+from ai_munimji_engine.core.packs import CliCommand
+from ai_munimji_engine.core.settings_store import SettingsError
 from .agents.purchase_agent import review_text
-from .inventory.analysis import SEV_NAMES, Analysis
+from ai_munimji_engine.packs.stock_procurement.inventory.analysis import SEV_NAMES, Analysis
 
 NAME = "stock_procurement"
 

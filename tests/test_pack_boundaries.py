@@ -10,10 +10,11 @@ from pathlib import Path
 
 import pytest
 
-from erp_agents.core.packs import PackRegistry
+from ai_munimji_engine.core.packs import PackRegistry
 
 SRC = Path(__file__).resolve().parent.parent / "src" / "erp_agents"
 CORE = SRC / "core"
+ENGINE_CORE = SRC.parent.parent / "engine" / "src" / "ai_munimji_engine" / "core"            # the part of the core that moved into the engine keeps its place in the tree
 PACKS = SRC / "packs"
 
 
@@ -95,7 +96,7 @@ def test_the_core_has_no_hard_wired_stock_names_in_its_registries():
     """The few places that used to name the stock pack's things are fed by the pack now. These strings must not come back into the core's code."""
     banned = ["inventory.alert", "procurement.order", "stock_overview", "prepare_order_request", "agent_runs", "stock_notices", "assistant_answers", "chat_log"]
     hits = []
-    for path in python_files(CORE):
+    for path in (*python_files(CORE), *python_files(ENGINE_CORE)):
         text = path.read_text(encoding="utf-8")
-        hits += [f"{path.relative_to(SRC)}: {word}" for word in banned if word in text and path.name not in ("doctor.py",)]
+        hits += [f"{path.name}: {word}" for word in banned if word in text and path.name not in ("doctor.py",)]
     assert not hits, "stock-specific names in the core:\n" + "\n".join(hits)

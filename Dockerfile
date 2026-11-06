@@ -6,6 +6,7 @@ ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 ERP_AGENTS_DATA=/data
 WORKDIR /app
 COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
+COPY engine ./engine
 COPY docker ./docker
 RUN pip install ".[agents]" \
     && useradd --create-home --uid 10001 agent \

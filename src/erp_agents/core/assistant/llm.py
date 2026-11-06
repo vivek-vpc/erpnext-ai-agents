@@ -7,7 +7,8 @@ from typing import Any, Optional, Protocol
 
 import requests
 
-from .. import obs, resilience
+from .. import resilience
+from ai_munimji_engine.core import obs
 from ..httpguard import guard_session
 
 SEED = 42

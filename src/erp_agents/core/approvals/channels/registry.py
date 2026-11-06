@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from .base import Channel
+from ai_munimji_engine.core.approvals.channels.base import Channel
 from .simple import ConsoleChannel, InboxChannel
 from .telegram import TelegramChannel
 from .whatsapp import WhatsAppChannel

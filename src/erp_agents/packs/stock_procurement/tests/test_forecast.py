@@ -2,11 +2,11 @@
 from datetime import timedelta
 
 from conftest import OWNER
-from erp_agents.core.erp.base import SalesDue
+from ai_munimji_engine.packs.stock_procurement.erp import SalesDue
 from erp_agents.core.erp.mock import MockERP
-from erp_agents.packs.stock_procurement.inventory.analysis import STATUS_BREACH, analyze_item
-from erp_agents.packs.stock_procurement.inventory.forecast import forecast_reorder_point
-from erp_agents.packs.stock_procurement.settings import Policy
+from ai_munimji_engine.packs.stock_procurement.inventory.analysis import STATUS_BREACH, analyze_item
+from ai_munimji_engine.packs.stock_procurement.inventory.forecast import forecast_reorder_point
+from ai_munimji_engine.packs.stock_procurement.settings import Policy
 
 
 def seasonal_erp(clock, peak=30.0):
@@ -79,7 +79,7 @@ def test_the_switch_for_sales_orders_alone(make_app, clock):
 
 
 def test_the_weekly_forecast_shows_the_season_and_the_sales_orders_week_by_week(clock):
-    from erp_agents.core.erp.base import DailyUsage
+    from ai_munimji_engine.packs.stock_procurement.erp import DailyUsage
     today = clock().date()
     usage = [DailyUsage(today - timedelta(days=age), 30.0 if 359 <= age <= 365 else 10.0) for age in range(1, 481)]
     sales = [SalesDue("X", today - timedelta(days=2), 5), SalesDue("X", today + timedelta(days=9), 40)]
@@ -90,7 +90,7 @@ def test_the_weekly_forecast_shows_the_season_and_the_sales_orders_week_by_week(
 
 
 def test_without_a_years_history_there_is_no_seasonal_guess(clock):
-    from erp_agents.core.erp.base import DailyUsage, ItemInfo, StockInfo
+    from ai_munimji_engine.packs.stock_procurement.erp import DailyUsage, ItemInfo, StockInfo
     today = clock().date()
     usage = [DailyUsage(today - timedelta(days=age), 10.0) for age in range(1, 100)]
     a = analyze_item(ItemInfo("NEW", "New", uom="pcs", lead_time_days=5, created=today - timedelta(days=99)), StockInfo(on_hand=500), usage, Policy(), today)

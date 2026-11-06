@@ -2,7 +2,7 @@
 import asyncio
 import os
 import sys
-from erp_agents.core.packs import PackRegistry
+from ai_munimji_engine.core.packs import PackRegistry
 from pathlib import Path
 
 import pytest

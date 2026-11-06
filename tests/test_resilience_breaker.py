@@ -4,7 +4,8 @@ import threading
 
 import pytest
 
-from erp_agents.core import metrics, resilience
+from erp_agents.core import resilience
+from ai_munimji_engine.core import metrics
 from erp_agents.core.resilience import BreakerOpen, BreakerState, CircuitBreaker, MemoryBreakerStore
 
 

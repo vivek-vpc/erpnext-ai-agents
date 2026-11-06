@@ -22,7 +22,7 @@ import yaml
 from erp_agents.core.agents.llm import describe, make_client
 from erp_agents.core.assistant.llm import LLMError
 from erp_agents.core.config import load_config
-from erp_agents.core.policy import AGENT_PROVIDERS, AgentSettings
+from ai_munimji_engine.core.policy import AGENT_PROVIDERS, AgentSettings
 
 from .cases import Case, load_cases
 from .metrics import summarise

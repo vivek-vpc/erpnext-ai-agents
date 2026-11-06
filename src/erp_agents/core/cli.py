@@ -11,15 +11,15 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Optional
 
-from . import obs
+from ai_munimji_engine.core import obs
 from .approvals.channels.telegram import TelegramChannel
-from .approvals.render import render_plain
+from ai_munimji_engine.core.approvals.render import render_plain
 from .bootstrap import App, StartupRefused, build_app
 from .config import load_config
 from . import doctor as doctor_checks
 from . import ops
-from .common import Actor
-from .packs import PackRegistry
+from ai_munimji_engine.core.common import Actor
+from ai_munimji_engine.core.packs import PackRegistry
 
 log = logging.getLogger(__name__)
 

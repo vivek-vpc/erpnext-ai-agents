@@ -8,12 +8,19 @@ from pathlib import Path
 import pytest
 import yaml
 
-from erp_agents.core import metrics, resilience
+from erp_agents.core import resilience
+from ai_munimji_engine.core import metrics
 from erp_agents.core.erp.erpnext import ERPNextClient
 from erp_agents.core.resilience import Limits, ResilienceSettings
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "src" / "erp_agents"
+ENGINE = ROOT / "engine" / "src" / "ai_munimji_engine"
+
+
+def source(module: str) -> Path:
+    """`core/x.py` as the documents write it: in the standalone service, or (the rule logic) in the engine at the same place."""
+    return SRC / module if (SRC / module).is_file() else ENGINE / module
 DOC = ROOT / "docs" / "RESILIENCE.md"
 TEXT = DOC.read_text(encoding="utf-8")
 
@@ -101,13 +108,14 @@ def test_the_frappe_table_names_modules_and_functions_that_exist():
     assert len(rows) == 6
     for row in rows:
         for module in re.findall(r"`(core/[a-z_/]+\.py)`", row[1]):
-            assert (SRC / module).is_file(), module
+            assert source(module).is_file(), module
     wanted = {"core/resilience.py": ["class CircuitBreaker", "class RateLimiter", "class Limits", "class BreakerStore"], "core/httpguard.py": ["def guard_session"],
-              "core/approvals/inbound_ledger.py": ["def claim"], "core/approvals/service.py": ["def reconcile_pending", "reconcile: Optional"], "core/erp/base.py": ["def find_by_reference"]}
+              "core/approvals/inbound_ledger.py": ["def claim"], "core/approvals/service.py": ["def reconcile_pending", "reconcile: Optional"]}
     for path, needles in wanted.items():
-        code = (SRC / path).read_text(encoding="utf-8")
+        code = source(path).read_text(encoding="utf-8")
         for needle in needles:
             assert needle in code, (path, needle)
+    assert "def find_by_reference" in (ROOT / "engine/src/ai_munimji_engine/core/erp/base.py").read_text(encoding="utf-8")
     for name in ("ApprovalService.reconcile_pending", "KindHandler.reconcile", "find_by_reference", "RateLimiter", "Limits"):
         assert name in TEXT
 

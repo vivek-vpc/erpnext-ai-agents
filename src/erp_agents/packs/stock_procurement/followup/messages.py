@@ -8,9 +8,9 @@ from __future__ import annotations
 from datetime import date
 from typing import Any, Optional
 
-from erp_agents.core.approvals.models import ACTION_DETAILS, ApprovalOption, ApprovalRequest, Section
-from ..inventory.analysis import _d, _n
-from ..templating import fill_template
+from ai_munimji_engine.core.approvals.models import ACTION_DETAILS, ApprovalOption, ApprovalRequest, Section
+from ai_munimji_engine.packs.stock_procurement.inventory.analysis import _d, _n
+from ai_munimji_engine.packs.stock_procurement.templating import fill_template
 
 KIND_CHASE = "procurement.chase"
 KIND_RECEIPT = "procurement.receipt_check"

@@ -28,8 +28,8 @@ from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
-from .common import Actor
-from .toolkit import Toolkit
+from ai_munimji_engine.core.common import Actor
+from ai_munimji_engine.core.toolkit import Toolkit
 
 log = logging.getLogger(__name__)
 

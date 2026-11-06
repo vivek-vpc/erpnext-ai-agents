@@ -12,8 +12,8 @@ from typing import Callable, Optional, Sequence, Any
 
 from dataclasses import replace
 
-from .base import (CountLine, DailyUsage, FoundDocument, ItemInfo, MessageResult, PurchaseOrderDraft, PurchaseOrderResult, QuoteRule, ReceiptLine, RequisitionDraft, SalesDue, StockInfo,
-                   StockTransferDraft, SupplierContact, TaxSetup, VendorOffer, WarehouseStock)
+from ai_munimji_engine.packs.stock_procurement.erp import CountLine, DailyUsage, ItemInfo, MessageResult, PurchaseOrderDraft, PurchaseOrderResult, QuoteRule, ReceiptLine, RequisitionDraft, SalesDue, StockInfo, StockTransferDraft, SupplierContact, TaxSetup, VendorOffer, WarehouseStock
+from ai_munimji_engine.core.erp.base import FoundDocument
 
 HISTORY_DAYS = 480
 

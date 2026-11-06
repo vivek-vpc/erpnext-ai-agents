@@ -22,7 +22,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, replace
 from typing import Any, Callable, Iterator, Optional, Protocol, TypeVar
 
-from . import metrics, obs
+from ai_munimji_engine.core import metrics, obs
 
 log = logging.getLogger(__name__)
 T = TypeVar("T")

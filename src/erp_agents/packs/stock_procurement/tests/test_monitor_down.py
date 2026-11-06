@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from conftest import OWNER
 from erp_agents.core.api.app import create_app
 from erp_agents.core.erp.mock import MockERP
-from erp_agents.packs.stock_procurement.inventory.messages import KIND_MONITOR_DOWN
+from ai_munimji_engine.packs.stock_procurement.inventory.messages import KIND_MONITOR_DOWN
 
 
 class FlakyERP(MockERP):
@@ -44,7 +44,7 @@ def test_a_run_that_cannot_read_the_erp_is_recorded_and_changes_nothing_else(wor
     erp.down = True
     report = app.inventory.run()
     assert report.failed and report.checked == 0 and "ConnectionError" in report.errors[0] and "Traceback" not in report.errors[0]
-    row = app.db.query("SELECT summary_json, dry_run FROM agent_runs")[0]
+    row = app.stock_stores.runs.list(10)[0]
     assert json.loads(row["summary_json"])["failed"] is True and row["dry_run"] == 0
     assert not app.alerts.list(None, None, 10) and not app.approvals.list(None, 10)
     erp.down = False
@@ -56,7 +56,7 @@ def test_a_failure_while_reading_stock_is_recorded_too(world):
     erp.down_on_stock = True
     report = app.inventory.run()
     assert report.failed and "TimeoutError" in report.errors[0]
-    assert len(app.db.query("SELECT 1 FROM agent_runs")) == 1
+    assert len(app.stock_stores.runs.list(10)) == 1
 
 
 def test_the_api_returns_the_failed_report_instead_of_a_server_error(make_app, clock):

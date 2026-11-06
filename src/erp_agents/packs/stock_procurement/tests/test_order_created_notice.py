@@ -6,8 +6,8 @@ from erp_agents.core.approvals.channels.simple import InboxChannel
 from erp_agents.core.approvals.channels.telegram import TelegramChannel
 from erp_agents.core.approvals.channels.whatsapp import WhatsAppChannel
 from erp_agents.core.approvals.inbound import process_inbound
-from erp_agents.core.approvals.models import InboundEvent
-from erp_agents.core.workorders import REORDER_NEEDED
+from ai_munimji_engine.core.approvals.models import InboundEvent
+from ai_munimji_engine.core.workorders import REORDER_NEEDED
 from erp_agents.core.erp.mock import MockERP
 
 CHAT, PHONE = "555", "919800000000"

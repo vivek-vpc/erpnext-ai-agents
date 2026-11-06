@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from ..policy import PROVIDER_LABELS, AgentSettings
+from ai_munimji_engine.core.policy import PROVIDER_LABELS, AgentSettings
 from .llm import is_remote
 
 # What an agent may send to a language model is declared by each pack in its manifest (`sends_to_model`) and passed in by the caller; nothing is listed here, so a pack that

@@ -14,7 +14,7 @@ pytest.importorskip("opentelemetry.sdk", reason='the optional "otel" extra is no
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from conftest import OWNER, VIEWER
-from erp_agents.core import obs, tracing
+from ai_munimji_engine.core import obs, tracing
 from erp_agents.core.assistant.llm import LLMError
 from erp_agents.core.bootstrap import StartupRefused
 from erp_agents.core.erp.mock import MockERP
@@ -71,8 +71,8 @@ def everything_in(spans):
 # ------------------------------------------------------------------ off, by default
 def test_tracing_is_off_by_default_and_the_application_does_not_even_load_the_sdk():
     code = ("import sys\n"
-            "import erp_agents.core.cli, erp_agents.core.bootstrap, erp_agents.core.toolkit, erp_agents.core.agents.service, erp_agents.core.obs\n"
-            "from erp_agents.core import tracing\n"
+            "import erp_agents.core.cli, erp_agents.core.bootstrap, ai_munimji_engine.core.toolkit, erp_agents.core.agents.service, ai_munimji_engine.core.obs\n"
+            "from ai_munimji_engine.core import tracing\n"
             "assert not tracing.enabled()\n"
             "with tracing.span('x', a=1) as s:\n"
             "    s.set(b=2)\n"
