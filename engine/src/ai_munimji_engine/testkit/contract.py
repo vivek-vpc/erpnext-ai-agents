@@ -187,7 +187,8 @@ def list_items_begins_an_items_history_at_its_first_stock_movement(client, site)
     eq(date_of(by[site.n("steady")].created), site.today - timedelta(days=100), "steady")
     eq(date_of(by[site.n("moving")].created), site.today - timedelta(days=50), "moving")
     created_new = date_of(by[site.n("new")].created)
-    assert created_new is not None and created_new <= site.today, "an item with no movement keeps the day it was created"
+    # the day it was created, which is the day the world was loaded, give or take one: the ERP stamps `creation` in its own time zone, the loader took the reference day from its own clock
+    assert created_new is not None and abs((created_new - site.today).days) <= 1, f"an item with no movement keeps the day it was created (got {created_new}, the world was loaded on {site.today})"
 
 
 @check("items")
