@@ -929,3 +929,50 @@ def a_failed_transaction_leaves_nothing_in_the_core_or_the_stock_stores(stores, 
             stock.proposals.insert("p1", "w1", "BOLT", "awaiting", None, None, None, None, None, None, "", T0)
             raise RuntimeError("the handler failed")
     assert stores.approvals.get("req-1") is None and stock.alerts.get("a1") is None and stock.proposals.get("p1") is None
+
+
+# =====================================================================================================================
+# one known history, one known seal
+# =====================================================================================================================
+AUDIT_NOW = "2026-10-18T09:00:00+00:00"
+AUDIT_REQUEST = '{"kind":"procurement.po","title":"Reorder bolts","facts":{"item_code":"BOLT","qty":10,"supplier":"S1"}}'
+
+
+def audit_history(stores: Any) -> Any:
+    """Make a fixed history in the stores (two closed requests, an open one, a change of settings) and return the audit chain over it, ready to sweep. The chain's hashes depend only on
+    the content of the records and the times, so every backend that keeps the rows as written gives the same chain: `AUDIT_GOLDEN` is that chain, worked out on SQLite."""
+    from datetime import datetime
+
+    from ..core.audit import AuditChain
+
+    a = stores.approvals
+    a.insert("a1", "procurement.po", AUDIT_REQUEST, "item", "BOLT", T0, T3)
+    a.insert("a2", "inventory.alert", '{"title":"Low on nuts"}', "item", "NUT", T1, None)
+    a.insert("a3", "procurement.po", '{"title":"Still open"}', "item", "WASHER", T1, None)
+    a.decide_if_pending("a1", '{"action":"approve","actor_id":"priya","channel":"desk"}', T2)
+    a.expire_if_pending("a2")
+    stores.settings.save("system", "*", '{"min_qty":5}', "priya", T1, [("min_qty", "null", "5"), ("lead", "3", "4")])
+    return AuditChain(stores.audit, clock=lambda: datetime.fromisoformat(AUDIT_NOW))
+
+
+AUDIT_GOLDEN: dict[str, Any] = {
+    "entries": 4,
+    "latest_hash": "3a39051432dcd115f3ab0857c347058a42b5bab8b8f7c3c6cca175b440cd063c",
+    "hashes": [
+        "a969ffef0962b7f0d1b4d2538b8e8e3f6175d6219ff7c12b97357b2d10c58dab",
+        "f1c0472346c72edc1cdaca985121f2312a84db2490dc79b04879178557186111",
+        "d4cc73eb95397d7f9d328d0e9e719932b2bcdd4092095ab78a47f74387c533c9",
+        "3a39051432dcd115f3ab0857c347058a42b5bab8b8f7c3c6cca175b440cd063c",
+    ],
+    "events": [("approval", "a2", "sealed"), ("approval", "a1", "sealed"), ("setting", "1", "sealed"), ("setting", "2", "sealed")],
+}
+
+
+def audit_seen(stores: Any) -> dict[str, Any]:
+    """What a backend's seal over `audit_history` looks like, in the shape of AUDIT_GOLDEN (and whether it verifies)."""
+    chain = audit_history(stores)
+    chain.sweep()
+    verdict = chain.verify()
+    entries = stores.audit.entries()
+    return {"ok": verdict["ok"], "entries": verdict["entries"], "latest_hash": verdict["latest_hash"], "hashes": [e["hash"] for e in entries],
+            "events": [(e["source"], e["ref_id"], e["event"]) for e in entries]}
