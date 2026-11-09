@@ -4,6 +4,13 @@ What changed for someone who runs the service or builds on the engine. Nothing h
 
 ## Unreleased
 
+### Publishing the engine (nothing is published yet)
+
+* **A workflow that publishes `ai-munimji-engine` to PyPI** when a tag `engine-vX.Y.Z` is pushed (`.github/workflows/publish-engine.yml`), by PyPI's trusted publishing (no token stored), after the
+  protected environment `pypi` is approved, with every action pinned by commit SHA. On every pull request the same file runs as a dry run: build, `twine check --strict`, and a check that the names PyPI
+  was registered with, the permissions and the pins are still in it (`tools/check_publish_workflow.py`, `tests/test_publish_workflow.py`). The steps that are the owner's are in
+  [docs/PUBLISH_ENGINE.md](docs/PUBLISH_ENGINE.md). No tag has been pushed and nothing is on PyPI.
+
 ### Changed behaviour of the service
 
 * **A purchase request keeps the tax figures it was made with.** When someone changes the quantity or the vendor of a request, or the request is rebuilt, the totals are worked out from the

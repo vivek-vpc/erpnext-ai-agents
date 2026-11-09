@@ -1,0 +1,65 @@
+name: Publish the engine
+
+# ai-munimji-engine (the engine/ folder) is built on every pull request as a DRY RUN (build, twine check, and the checks of tools/check_publish_workflow.py), and it is published to PyPI
+# only when a tag engine-vX.Y.Z is pushed, through PyPI's trusted publishing (OpenID Connect: no token is stored anywhere), after the protected environment "pypi" has been approved.
+# The names in this file are the ones registered on PyPI: project ai-munimji-engine, owner vivek-vpc, repository erpnext-ai-agents, workflow publish-engine.yml, environment pypi.
+# Do not change one without changing PyPI; the dry run fails if one of them goes. What to do by hand is in docs/PUBLISH_ENGINE.md. Every action is pinned by commit SHA.
+
+on:
+  pull_request:
+  push:
+    tags:
+      - "engine-v*"
+
+permissions: {}
+
+jobs:
+  build:
+    name: Build, twine check and the checks of this workflow (the dry run)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Install the build tools (exact versions)
+        run: python -m pip install "build==1.6.1" "twine==7.0.0" "pyyaml>=6"
+      - name: The names PyPI was registered with, the permissions and the pins of this workflow
+        run: python tools/check_publish_workflow.py workflow
+      - name: Build the sdist and the wheel
+        run: python -m build --outdir dist engine
+      - name: twine check
+        run: python -m twine check --strict dist/*
+      - name: On a tag, the tag is engine-v plus the version of engine/pyproject.toml, and the files built carry that version
+        if: github.ref_type == 'tag'
+        run: python tools/check_publish_workflow.py tag "$GITHUB_REF_NAME"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: engine-dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish to PyPI (a tag engine-v* only)
+    needs: build
+    if: github.ref_type == 'tag' && startsWith(github.ref_name, 'engine-v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: pypi
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: engine-dist
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+        with:
+          packages-dir: dist
