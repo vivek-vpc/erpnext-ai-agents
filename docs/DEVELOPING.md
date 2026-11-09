@@ -89,7 +89,7 @@ These are the checks a pack cannot opt out of, because they live in the core and
    its SQLite class lives in `erp_agents/stores/` (the core) or `packs/<name>/stores.py` (a pack), with the SQL unchanged, and a `Memory*Store` beside the Protocol keeps the same rows in dicts.
    `ApprovalService`, `AlertRepo`, `ProposalRepo`, `NoticeRepo`, `WorkOrderQueue`, `SettingsStore`, `AgentLog` and the rest take a store, never a database. The Frappe app gives them stores over
    DocTypes, so a stray `db.execute` somewhere else is work nobody will find: `tests/test_no_sqlite_in_the_domain.py` fails if any module that is not about SQLite reaches `sqlite3`,
-   and `tests/test_store_contracts_core.py` and the pack's `test_store_contracts_stock.py` run every store on SQLite and in memory. A new store comes with its Protocol, both classes and a contract test.
+   and the 60 store checks in `ai_munimji_engine.testkit.stores` (no `pytest` in their imports; `tests/test_store_contracts.py` runs each on SQLite and in memory, and the Frappe app runs the same ones on DocTypes) cover every store. A new store comes with its Protocol, its classes and a check there.
    **The ERP port has shared checks too.** `ai_munimji_engine.testkit` (shipped in the engine wheel, no `pytest` in its imports) holds a small neutral **world** (warehouses, items with and without history,
    suppliers, orders, receipts, a quotation, a sales order, a Tax Rule; dates relative to a reference day) and about 44 **checks** written once against the port, each saying which part of the world it needs.
    They are run on the demo ERP (`erp_agents.core.erp.world_erp.WorldERP`, `tests/test_erp_contract.py`), on the REST client against a live ERPNext (`python -m tools.testdata.cli contract` loads the world
