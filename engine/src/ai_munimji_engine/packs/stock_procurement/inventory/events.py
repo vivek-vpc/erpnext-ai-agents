@@ -15,6 +15,14 @@ from datetime import date, timedelta
 from typing import Any, Iterable, Optional, Sequence
 
 HORIZON_DAYS = 730
+DATE_HORIZON_DAYS = 3650                      # ten years: no date is worked out further away than this, and no day-by-day sum goes further either
+
+
+def date_after(day: date, days: Optional[float]) -> Optional[date]:
+    """`day` plus `days`, or None when `days` is not a number or is more than ten years either way. Such a date is not a plan, and past the end of the calendar the sum would raise."""
+    if days is None or not math.isfinite(days) or abs(days) > DATE_HORIZON_DAYS:
+        return None
+    return day + timedelta(days=days)
 
 
 @dataclass(frozen=True)
@@ -62,6 +70,8 @@ def total_demand(rate: float, windows: Sequence[Window], today: date, days: floa
     """Expected demand over the next `days` days (fractions allowed), today included."""
     if not windows or days <= 0:
         return rate * max(days, 0.0)
+    if days > DATE_HORIZON_DAYS:                       # past ten years the usual rate carries on, as days_until_demand does past its horizon
+        return total_demand(rate, windows, today, DATE_HORIZON_DAYS) + rate * (days - DATE_HORIZON_DAYS)
     whole, part = int(math.floor(days)), days - math.floor(days)
     total = sum(rate * factor_on(today + timedelta(days=k), windows) for k in range(whole))
     return total + part * rate * factor_on(today + timedelta(days=whole), windows)

@@ -13,6 +13,7 @@ filled in: it becomes a neutral score AND a note the owner reads.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import asdict, dataclass, field
 from typing import Any, Optional
 
@@ -101,6 +102,24 @@ def normalised_weights(s: ProcurementSettings) -> dict[str, float]:
     return {k: v * 100.0 / total for k, v in raw.items()}
 
 
+def _share(rate: Optional[float]) -> Optional[float]:
+    """An on-time rate is a share of receipts: kept between 0 and 1, and unknown (None) when it is not a number."""
+    if rate is None or not math.isfinite(rate):
+        return None
+    return min(max(rate, 0.0), 1.0)
+
+
+def untaxed_note(eligible: list[ScoredVendor]) -> str:
+    """Said when some of the vendors compared have duties and taxes in their total and others have none: the second kind looks cheaper and is not known to be. Empty otherwise."""
+    bare = [v for v in eligible if not v.tax_lines]
+    if not bare or len(bare) == len(eligible):
+        return ""
+    names = bare[0].name if len(bare) == 1 else ", ".join(v.name for v in bare[:-1]) + " and " + bare[-1].name
+    who, whose, total = ("has", "its", "is") if len(bare) == 1 else ("have", "their", "are")
+    return (f"{names} {who} no tax setup, so {whose} total{'s' if total == 'are' else ''} {total} before tax and {total} not comparable with the vendors whose totals include duties and taxes. "
+            "Check the taxes in the ERP before you rely on the ranking.")
+
+
 def rank_vendors(offers: list[VendorOffer], need: Need, settings: ProcurementSettings,
                  tax_setups: Optional[dict[str, TaxSetup]] = None) -> Ranking:
     """`tax_setups` = for each supplier, the duties and taxes the ERP itself applies to this purchase (None = not asked)."""
@@ -110,17 +129,31 @@ def rank_vendors(offers: list[VendorOffer], need: Need, settings: ProcurementSet
 
     mode = settings.use_quotations
     for o in offers:
-        quoted = o.quote_price if mode != "off" and o.quote_price else None        # a valid supplier quotation, when the owner wants those read
-        price = quoted or o.unit_price or o.avg_price
-        source = "quotation" if quoted else "last order" if o.unit_price else "average of past orders" if o.avg_price else ""
+        # The price is the first one on record: the quotation (when the owner wants those read), else the last order, else the average. A price on record that is not a positive
+        # number (a return booked as an order, a rate of zero, a broken figure) is not a price to buy at: the vendor is out, and the reason says where to look.
+        if mode != "off" and o.quote_price is not None:
+            raw_price, source = o.quote_price, "quotation"
+        elif o.unit_price is not None:
+            raw_price, source = o.unit_price, "last order"
+        elif o.avg_price is not None:
+            raw_price, source = o.avg_price, "average of past orders"
+        else:
+            raw_price, source = None, ""
+        unusable = raw_price is not None and not (math.isfinite(raw_price) and raw_price > 0)
+        price = None if unusable else raw_price
+        quoted = price if source == "quotation" else None
         goods = round(price * need.qty, 2) if price else None
         v = ScoredVendor(
             supplier=o.supplier, name=o.name, eligible=True, unit_price=price, total=goods, goods_total=goods,
-            on_time_rate=o.on_time_rate, payment_days=o.payment_days, orders=o.orders, listed=o.listed, country=o.country,
-            price_source=source, quote_ref=o.quote_ref if quoted else None, quote_valid_till=o.quote_valid_till.isoformat() if quoted and o.quote_valid_till else None,
-            quote_qty=o.quote_qty if quoted else None,
+            on_time_rate=_share(o.on_time_rate), payment_days=o.payment_days, orders=o.orders, listed=o.listed, country=o.country,
+            price_source="" if unusable else source, quote_ref=o.quote_ref if quoted else None,
+            quote_valid_till=o.quote_valid_till.isoformat() if quoted and o.quote_valid_till else None, quote_qty=o.quote_qty if quoted else None,
         )
-        if not price:
+        if unusable:
+            v.eligible = False
+            v.excluded_reason = ("the price on the supplier quotation is not a positive number: check the quotation in the ERP" if source == "quotation"
+                                 else "the price on record is not a positive number: check the last order in the ERP")
+        elif not price:
             v.eligible, v.excluded_reason = False, "no price on record: the ERP has no past order for this item from them" + (" and no valid supplier quotation" if mode != "off" else "")
         elif mode == "only" and not quoted:
             v.eligible, v.excluded_reason = False, "no valid supplier quotation for this item (your settings compare only vendors that have quoted)"
@@ -151,12 +184,12 @@ def rank_vendors(offers: list[VendorOffer], need: Need, settings: ProcurementSet
                 v.flags.append(f"no delivery history: assumed {need.fallback_lead_days:g} days")
             if quoted and o.quote_qty and o.quote_qty < need.qty:
                 v.flags.append(f"their quotation is for {o.quote_qty:g} {need.uom} and you need {need.qty:g}: confirm the price holds for the larger quantity")
-            if o.on_time_rate is None:
+            if v.on_time_rate is None:
                 v.flags.append("no receipts on record to judge on-time delivery")
             v.arrives_after_stockout = need.cover_days is not None and v.lead_days > need.cover_days
             if v.arrives_after_stockout:
                 v.flags.append(f"would arrive about {v.lead_days - need.cover_days:.1f} days after you run out")
-            if (settings.flag_price_jump_pct and o.avg_price and price
+            if (settings.flag_price_jump_pct and o.avg_price and math.isfinite(o.avg_price) and o.avg_price > 0 and price
                     and price > o.avg_price * (1 + settings.flag_price_jump_pct / 100)):
                 v.flags.append(f"{'their quotation' if quoted else 'latest price'} is {(price / o.avg_price - 1) * 100:.0f}% above their average of {o.avg_price:g}")
         vendors.append(v)
@@ -171,7 +204,7 @@ def rank_vendors(offers: list[VendorOffer], need: Need, settings: ProcurementSet
             delivery = 100.0 * (min_lead / v.lead_days) if v.lead_days and v.lead_days > 0 else 100.0
             if v.arrives_after_stockout:
                 delivery = min(delivery, LATE_DELIVERY_CAP)
-            reliability = v.on_time_rate * 100.0 if v.on_time_rate is not None else NEUTRAL
+            reliability = v.on_time_rate * 100.0 if v.on_time_rate is not None else NEUTRAL      # already kept between 0 and 1 (_share)
             terms = 100.0 * (v.payment_days or 0.0) / max_credit if max_credit > 0 else NEUTRAL
             v.scores = {"cost": cost, "delivery": delivery, "reliability": reliability, "terms": terms}
             v.points = {k: v.scores[k] * weights[k] / 100.0 for k in FACTORS}
@@ -193,6 +226,12 @@ def rank_vendors(offers: list[VendorOffer], need: Need, settings: ProcurementSet
             else:
                 notes.append("Duties and taxes are not in this comparison: the ERP has no Tax Rule or default purchase taxes template that applies "
                              "to these vendors. Set them up in the ERP (Tax Rule, Purchase Taxes and Charges Template) and the next comparison will use them.")
+        mixed = untaxed_note(elig)
+        if mixed:                                                   # said first: it is to be read before the winner is trusted
+            notes.insert(0, mixed)
+            for v in elig:
+                if not v.tax_lines:
+                    v.flags.append("its total is before tax, so it is not comparable with the totals that include duties and taxes")
         best = elig[0]
         for v in elig[1:]:
             v.why_not = _why_not(best, v, need.uom)

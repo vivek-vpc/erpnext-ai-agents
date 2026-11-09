@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
@@ -61,6 +62,20 @@ def clip(text: Any, n: int = 200) -> str:
     return clean[: n - 1].rsplit(" ", 1)[0].rstrip(" ,;:(") + "\u2026"
 
 
+def parse_number(raw: Any) -> float:
+    """A number as a person types it. "800", "12.5", "1,234.5", "1,000" and "1,00,000" read as written, the commas being thousands separators. One comma with no dot and one
+    or two digits after it ("12,5", "0,5") is a decimal comma. "1,500" could be either and is read as thousands. A comma after the decimal point ("1.234,56") is not
+    read at all: guessing it would be off by a factor of a thousand. Raises ValueError when the text is not a number."""
+    text = str(raw).strip()
+    if text.count(",") == 1 and "." not in text and re.fullmatch(r"[+-]?\d*,\d{1,2}", text):
+        text = text.replace(",", ".")
+    elif "," in text:
+        if "." in text and text.rfind(",") > text.rfind("."):
+            raise ValueError("a comma after the decimal point")
+        text = text.replace(",", "")
+    return float(text)
+
+
 def coerce_arguments(spec: ToolSpec, args: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
     """Make the arguments fit the tool: numbers sent as text become numbers (small models do that), unknown names are dropped and reported, a wrong value is an error."""
     out: dict[str, Any] = {}
@@ -76,7 +91,7 @@ def coerce_arguments(spec: ToolSpec, args: dict[str, Any]) -> tuple[dict[str, An
             if kind == "integer":
                 out[key] = int(float(val))
             elif kind == "number":
-                v = float(str(val).replace(",", "")) if isinstance(val, str) else float(val)
+                v = parse_number(val) if isinstance(val, str) else float(val)
                 if v != v or v in (float("inf"), float("-inf")):
                     raise ValueError("not a finite number")
                 out[key] = v

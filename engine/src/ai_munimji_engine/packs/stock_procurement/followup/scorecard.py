@@ -81,7 +81,7 @@ def _drift(lines: list[ReceiptLine]) -> tuple[Optional[float], str]:
 def score_vendors(lines: Sequence[ReceiptLine], late_now: dict[str, int], recorded: dict[str, list[dict[str, Any]]], names: Optional[dict[str, str]] = None) -> list[VendorScore]:
     by_vendor: dict[str, list[ReceiptLine]] = defaultdict(list)
     for l in lines:
-        if l.submitted and l.supplier:
+        if l.submitted and l.supplier and l.received_qty > 0:        # a return (negative quantity) is goods going back, not a delivery: it is neither on time nor late
             by_vendor[l.supplier].append(l)
     vendors = sorted(set(by_vendor) | set(late_now))
     out = []

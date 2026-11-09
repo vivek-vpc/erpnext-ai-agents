@@ -23,6 +23,7 @@ from ai_munimji_engine.core.approvals.service import ApprovalService, KindHandle
 from ai_munimji_engine.core import acting
 from ai_munimji_engine.core.common import Actor, Clock, iso, short_id, utcnow
 from ai_munimji_engine.core.settings_store import SettingsStore
+from ai_munimji_engine.core.toolkit import parse_number
 from ai_munimji_engine.storage import dumps
 from ai_munimji_engine.stores.stock.runs import AgentRunStore
 from ai_munimji_engine.core.workorders import REORDER_NEEDED, WorkOrderQueue
@@ -366,7 +367,7 @@ class ProcurementAgent:
     def _new_qty(self, raw: Any, prop: Proposal, uom: str, what: str = "request") -> tuple[Optional[float], str]:
         """(the quantity, "") or (None, why it is refused)."""
         try:
-            qty = round(float(str(raw).replace(",", "").strip()), 3)
+            qty = round(parse_number(raw), 3)
         except ValueError:
             return None, f"{str(raw)[:30]!r} is not a number. Reply with just the quantity, for example 800."
         if not math.isfinite(qty) or qty <= 0:
@@ -661,7 +662,8 @@ class ProcurementAgent:
             raise RuntimeError(f"this item has a minimum order quantity of {_n(moq)} {pay.get('uom', 'units')} in your ERP and this request is for {_n(prop.qty)}. "
                                f"Press Change quantity and enter {_n(moq)} or more, or type: create a purchase order for {prop.item_code}")
         best = next((v for v in (prop.ranking or {}).get("vendors", []) if v["supplier"] == prop.supplier), {})
-        arrival = expected_arrival(self.today(), best.get("lead_days")) or self.today() + timedelta(days=int(pay.get("lead_time_days") or 7))
+        arrival = (expected_arrival(self.today(), best.get("lead_days")) or expected_arrival(self.today(), pay.get("lead_time_days") or 7)
+                   or self.today() + timedelta(days=7))              # a lead time that is not a number, or more than ten years, gives no date: a week then
         who_acting = None if recovered else self._acting_for(decision.actor_id, cfg)
         approved_by = f"{decision.actor_id} via {decision.channel}"
         replaces = None if pr else (prop.ranking or {}).get("replaces_po")
