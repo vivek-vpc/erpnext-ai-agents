@@ -121,6 +121,12 @@ def main() -> int:
         print(f"{len(report['modules'])} modules imported, {len(bad)} failed" + (f": {bad}" if bad else ""))
         if bad:
             problems.append(f"modules that do not import there: {bad}")
+        # 6. the stock pack's manifest is a file of the wheel, and reads there
+        done = run([py, "-I", "-c", "from ai_munimji_engine.packs.stock_procurement.manifest import manifest; m = manifest(); print(m.name, m.status, m.enabled_by_default, len(m.tools))"])
+        said = done.stdout.strip()
+        print("manifest in the wheel:", said or done.stderr.strip()[-300:])
+        if done.returncode or said != "stock_procurement active True 17":
+            problems.append(f"the manifest does not read from the installed wheel: {said or done.stderr.strip()[-300:]}")
         if args.keep_wheel:
             args.keep_wheel.mkdir(parents=True, exist_ok=True)
             shutil.copy2(wheel, args.keep_wheel / wheel.name)

@@ -191,6 +191,12 @@ def parse_manifest(data: Any, where: str, directory_name: Optional[str] = None) 
     return manifest
 
 
+def engine_manifest_path(name: str) -> Path:
+    """Where the engine itself keeps a pack's manifest: `ai_munimji_engine/packs/<name>/manifest.yaml` (package data of the engine's wheel). The stock pack's manifest is there, so that
+    the standalone service and the Frappe app read the same file; the empty skeleton packs keep theirs beside their folder in `erp_agents/packs/`."""
+    return Path(__file__).resolve().parents[1] / "packs" / name / MANIFEST_FILE
+
+
 def load_manifest(path: Path) -> PackManifest:
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -275,7 +281,8 @@ class Pack:
 
 # ---------------------------------------------------------------------------------------------------------------------- finding and loading packs
 class PackRegistry:
-    """The packs found in `erp_agents/packs/*/manifest.yaml`, which of them are on, and the ones that were loaded."""
+    """The packs found in `erp_agents/packs/*/` with their manifests (`manifest.yaml` beside the pack, or in the engine: `engine_manifest_path`), which of them are on, and the ones
+    that were loaded."""
 
     def __init__(self, manifests: dict[str, PackManifest], roots: dict[str, Path]) -> None:
         self.manifests, self.roots = manifests, roots
@@ -295,6 +302,8 @@ class PackRegistry:
         roots: dict[str, Path] = {}
         for child in sorted(p for p in directory.iterdir() if p.is_dir() and not p.name.startswith(("_", "."))):
             manifest_path = child / MANIFEST_FILE
+            if not manifest_path.is_file():
+                manifest_path = engine_manifest_path(child.name)             # the pack's manifest may be in the engine (the stock pack's is)
             if not manifest_path.is_file():
                 continue
             manifest = load_manifest(manifest_path)

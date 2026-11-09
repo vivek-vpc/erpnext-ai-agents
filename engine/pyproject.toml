@@ -37,3 +37,6 @@ Issues = "https://github.com/vivek-vpc/erpnext-ai-agents/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+ai_munimji_engine = ["packs/*/manifest.yaml"]        # the stock pack's manifest: tools, roles, approval kinds, enabled by default (read by the standalone service and by the Frappe app)

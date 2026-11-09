@@ -33,7 +33,7 @@ The Stock Assistant has always worked from rules: the same data gives the same a
 
 ## The tools
 
-The registry holds <!-- tools:counts -->17 tools: 14 read-only and 3 prepare-only<!-- /tools:counts -->. All of them are defined in the stock pack ([`src/erp_agents/packs/stock_procurement/tools.py`](../src/erp_agents/packs/stock_procurement/tools.py), declared in its [`manifest.yaml`](../src/erp_agents/packs/stock_procurement/manifest.yaml)) and registered with the core's tool registry ([`core/toolkit.py`](../src/erp_agents/core/toolkit.py)), which checks the caller's role on every call. They are plain Python with no web, HTTP or SQL imports, so they move into a Frappe app unchanged. The MCP server publishes exactly these, with the same names, descriptions and argument descriptions.
+The registry holds <!-- tools:counts -->17 tools: 14 read-only and 3 prepare-only<!-- /tools:counts -->. All of them are defined in the stock pack ([`src/erp_agents/packs/stock_procurement/tools.py`](../src/erp_agents/packs/stock_procurement/tools.py), declared in its [`manifest.yaml`](../engine/src/ai_munimji_engine/packs/stock_procurement/manifest.yaml), which is part of the engine) and registered with the core's tool registry ([`core/toolkit.py`](../src/erp_agents/core/toolkit.py)), which checks the caller's role on every call. They are plain Python with no web, HTTP or SQL imports, so they move into a Frappe app unchanged. The MCP server publishes exactly these, with the same names, descriptions and argument descriptions.
 
 | Tool | Who may use it | Returns |
 |---|---|---|
