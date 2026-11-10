@@ -20,7 +20,7 @@ from typing import Any, Optional, Sequence
 
 from ..settings import Policy
 from ai_munimji_engine.packs.stock_procurement.erp import IN_TRANSIT_COLUMN, IN_TRANSIT_LABEL, STOCK_COLUMNS, DailyUsage, ItemInfo, SalesDue, StockInfo, column_phrase, stock_column
-from .events import Window, days_until_demand, describe, total_demand
+from .events import DATE_HORIZON_DAYS, Window, date_after, days_until_demand, describe, total_demand
 from .forecast import forecast_reorder_point
 
 EPS = 1e-9
@@ -257,14 +257,22 @@ def analyze_item(
         policy={k: v for k, v in policy.model_dump().items()},
     )
 
-    # ---- lead time (admin override > ERP item > default)
-    if policy.lead_time_days:
-        a.lead_time_days, a.lead_time_source = policy.lead_time_days, "admin setting"
-    elif item.lead_time_days:
-        a.lead_time_days, a.lead_time_source = item.lead_time_days, "ERP item record"
+    # ---- lead time (admin override > ERP item > default). A figure that is not a number, or is more than ten years, is a typing mistake, not a lead time.
+    chosen, ignored_lead = None, []
+    for value, source in ((policy.lead_time_days, "admin setting"), (item.lead_time_days, "ERP item record")):
+        if not value:
+            continue
+        if math.isfinite(value) and 0 < value <= DATE_HORIZON_DAYS:
+            chosen = (value, source)
+            break
+        ignored_lead.append(f"The lead time in the {source} ({value:g} days) is not credible (a lead time must be a number of days, and not more than 10 years); it was ignored.")
+    a.notes += ignored_lead
+    if chosen:
+        a.lead_time_days, a.lead_time_source = chosen
     else:
-        a.lead_time_days, a.lead_time_source = policy.default_lead_time_days, "default (no lead time on item)"
-        a.notes.append(f"No lead time on the item; assumed {policy.default_lead_time_days:g} days.")
+        a.lead_time_days = policy.default_lead_time_days
+        a.lead_time_source = "default (no credible lead time)" if ignored_lead else "default (no lead time on item)"
+        a.notes.append(f"No lead time on the item; assumed {policy.default_lead_time_days:g} days." if not ignored_lead else f"Assumed {policy.default_lead_time_days:g} days instead.")
 
     # ---- stock position
     # The owner chooses which ERP stock columns are subtracted (-> available) and added (-> position).
@@ -301,7 +309,9 @@ def analyze_item(
     if rate > EPS:
         a.cover_days_on_hand = days_until_demand(max(a.available, 0.0), rate, windows, today)
         a.cover_days_position = days_until_demand(max(a.position, 0.0), rate, windows, today)
-        a.stockout_date = (today + timedelta(days=a.cover_days_on_hand)).isoformat()
+        a.stockout_date = _iso(date_after(today, a.cover_days_on_hand))
+        if a.stockout_date is None:
+            a.notes.append("No stock-out date is given: there is more than 10 years of cover at the current usage.")
         if stats.high_rate and stats.high_rate > EPS:
             a.high_rate_cover_days = max(a.available, 0.0) / stats.high_rate
         if windows:                                    # say what the calendar changed, with both figures
@@ -321,11 +331,11 @@ def analyze_item(
         a.notes.append(f"Open supply exists ({what}) but its arrival date is unknown; counted in position, timing not checked.")
     else:
         a.replenish_in_days = a.lead_time_days
-        a.replenish_date = (today + timedelta(days=a.lead_time_days)).isoformat()
+        a.replenish_date = _iso(date_after(today, a.lead_time_days))
     if a.replenish_in_days is not None and a.cover_days_on_hand is not None:
         a.gap_days = a.replenish_in_days - a.cover_days_on_hand
-    if a.cover_days_on_hand is not None:
-        a.latest_order_date = (today + timedelta(days=a.cover_days_on_hand - a.lead_time_days)).isoformat()
+    if a.cover_days_on_hand is not None and a.stockout_date is not None:           # no stock-out date (more than ten years of cover): no latest order date either
+        a.latest_order_date = _iso(date_after(today, a.cover_days_on_hand - a.lead_time_days))
 
     # ---- rules
     lead_trigger = a.lead_time_days + policy.safety_stock_days
@@ -580,6 +590,10 @@ def _n(v: Optional[float], digits: int = 1) -> str:
     if abs(v - round(v)) < 10 ** (-digits - 1):
         return f"{int(round(v)):,}"
     return f"{v:,.{digits}f}"
+
+
+def _iso(day: Optional[date]) -> Optional[str]:
+    return day.isoformat() if day else None
 
 
 def _d(iso_date: Optional[str]) -> str:

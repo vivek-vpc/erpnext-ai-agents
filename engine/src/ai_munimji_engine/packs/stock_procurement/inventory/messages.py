@@ -135,9 +135,8 @@ def _situation(a: Analysis) -> list[str]:
     if len(split) > 1:                                      # one warehouse says nothing the line above does not
         situation.append("By warehouse: " + "; ".join(split) + ".")
     if a.cover_days_on_hand is not None:
-        situation.append(
-            f"At about {_n(stats.planning_rate, 2)} {u}/day this lasts ~{_n(a.cover_days_on_hand)} days - stock-out around {_d(a.stockout_date)}."
-        )
+        usage_line = f"At about {_n(stats.planning_rate, 2)} {u}/day this lasts "
+        situation.append(usage_line + (f"~{_n(a.cover_days_on_hand)} days - stock-out around {_d(a.stockout_date)}." if a.stockout_date else "more than 10 years."))
     if a.replenish_in_days is not None:
         src = "open order due" if a.next_arrival else f"supplier lead time {_n(a.lead_time_days)} days ({a.lead_time_source})"
         line = f"Replenishment: {src} -> new stock around {_d(a.replenish_date)}."

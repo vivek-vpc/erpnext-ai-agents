@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ai-munimji-engine"
-version = "0.1.0"
+version = "0.1.1"
 description = "The rule logic of AI Munimji: stock analysis, vendor scoring, purchase-request approvals and the stores they use. Pure Python: no web server, no database driver, no network call."
 readme = "README.md"
 requires-python = ">=3.10"

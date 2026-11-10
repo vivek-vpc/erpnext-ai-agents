@@ -5,14 +5,16 @@ explanation cannot disagree with the data.
 """
 from __future__ import annotations
 
-from datetime import date, timedelta
+import math
+from datetime import date
 from typing import Any, Optional
 
 from ai_munimji_engine.core.approvals.models import ACTION_DETAILS, ApprovalOption, ApprovalRequest, Section
 from ..settings import ProcurementSettings
 from ..inventory.analysis import _d, _n
+from ..inventory.events import date_after
 from ..templating import fill_template
-from .scoring import FACTORS, Need, Ranking, ScoredVendor
+from .scoring import FACTORS, Need, Ranking, ScoredVendor, untaxed_note
 
 KIND_PO = "procurement.po"
 KIND_PR = "procurement.pr"             # a purchase REQUISITION (an ERPNext Material Request) is created first for this item
@@ -36,7 +38,10 @@ def price_source_text(v: Any) -> str:
 
 
 def expected_arrival(today: date, lead_days: Optional[float]) -> Optional[date]:
-    return today + timedelta(days=round(lead_days)) if lead_days is not None else None
+    """The date goods ordered today are expected, or None when there is no lead time to go by (or it is not a number, or more than ten years)."""
+    if lead_days is None or not math.isfinite(lead_days):
+        return None
+    return date_after(today, round(lead_days))
 
 
 def vendor_note_for(wo: dict[str, Any], best: ScoredVendor, need: Need, settings: ProcurementSettings, today: date, reference: str) -> str:
@@ -111,6 +116,9 @@ def build_po_request(proposal_id: str, wo: dict[str, Any], ranking: Ranking, bes
         headline = f"Request {_n(qty)} {u} of {name}: the best vendor is {best.name}, {_money(best.total)} in total" + (" with duties and taxes." if taxed else ".")
         rec[0] = (f"Create a purchase requisition for {_n(qty)} {u} of {name}. The best vendor is {best.name} at {_money(best.unit_price)} each: "
                   + (f"goods {_money(best.goods_total)}; with duties and taxes the total cost is {_money(best.total)}." if taxed else f"total {_money(best.total)}."))
+    mixed = untaxed_note(ranking.eligible)
+    if mixed:
+        rec.insert(1, f"Before you approve: {mixed}")        # right under the total it is about
     if revision:
         rec.insert(0, revision)
     rec.append(f"Expected delivery in about {_n(best.lead_days)} days" + (f" (around {_d(arrival.isoformat())})" if arrival else "") + ".")
@@ -173,7 +181,7 @@ def build_po_request(proposal_id: str, wo: dict[str, Any], ranking: Ranking, bes
         scored_how.append("Prices: a vendor's valid supplier quotation is used instead of its last order price; vendors without one use their last order.")
     elif settings.use_quotations == "only":
         scored_how.append("Prices: only vendors with a valid supplier quotation were compared, and the price is the one they quoted.")
-    notes = [f"{best.name}: {f}." for f in best.flags] + list(ranking.notes)
+    notes = [f"{best.name}: {f}." for f in best.flags] + [n for n in ranking.notes if n != mixed]          # the mixed-tax note is already in the recommendation
 
     sections = [Section(heading="Recommendation", lines=rec)]
     if stock:

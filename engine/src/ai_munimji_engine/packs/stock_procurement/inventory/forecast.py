@@ -20,7 +20,7 @@ from typing import Any, Optional, Sequence
 
 from ai_munimji_engine.packs.stock_procurement.erp import DailyUsage, SalesDue
 from ..settings import Policy
-from .events import Window, total_demand
+from .events import DATE_HORIZON_DAYS, Window, total_demand
 
 SEASONAL_MIN_UPLIFT = 1.15       # last year's swings smaller than +15 % are noise
 EPS = 1e-9
@@ -82,7 +82,7 @@ def forecast_reorder_point(usage: Sequence[DailyUsage], sales: Sequence[SalesDue
                            position: float, data_days: int, windows: Sequence[Window] = (), weeks: int = 0) -> Forecast:
     """The reorder point over `window_days`, and (when `weeks` > 0) a week-by-week forecast of expected use and sales orders due, for the forecast tool."""
     dm = _daily(usage)
-    days = max(int(round(window_days)), 1)
+    days = min(max(int(round(window_days)), 1), DATE_HORIZON_DAYS)         # the seasonal look-back and the cut-off date work in whole days, at most ten years
     index, note, ly_window, ly_normal = seasonal_index(dm, today, 0, days, data_days, policy)
     rate = planned_rate * index
     expected = total_demand(rate, windows, today, window_days) if rate > EPS else 0.0
