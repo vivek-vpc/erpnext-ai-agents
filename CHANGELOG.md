@@ -1,12 +1,12 @@
 # Changelog
 
-What changed for someone who runs the service or builds on the engine. `ai-munimji-engine` 0.1.0 is on PyPI; what is under "Unreleased" is not, and the version numbers have not moved.
+What changed for someone who runs the service or builds on the engine. `ai-munimji-engine` 0.1.0 (9 Nov 2026) is on PyPI and cannot be changed; 0.1.1 carries the fixes after review.
 
-## Unreleased
+## 0.1.1 (10 Nov 2026)
 
 ### Fixed after review
 
-All in the stock and purchasing pack; each has a test that failed before the fix (`src/erp_agents/packs/stock_procurement/tests/test_review_fixes.py`). These fixes are not in `ai-munimji-engine` 0.1.0 on PyPI; they reach the Frappe app with the next engine release.
+All in the stock and purchasing pack; each has a test that failed before the fix (`src/erp_agents/packs/stock_procurement/tests/test_review_fixes.py`). Nothing else changed: the dependencies (pydantic and PyYAML), the stores and their schema, and the interfaces are the same as in 0.1.0, so 0.1.1 replaces it as it is. The Frappe app 0.1.1 requires this version.
 
 * **An item with a very large stock is no longer dropped from monitoring.** 100,000 units on hand with one sale of 1 unit in 90 days is millions of days of cover, and `today + timedelta(...)` raised
   `OverflowError`; the run logged it and the item was never looked at again. Now no date is worked out more than 10 years away: the stock-out date (and the latest order date) is left empty, the cover
@@ -21,6 +21,8 @@ All in the stock and purchasing pack; each has a test that failed before the fix
 * **A total before tax next to totals with tax is said to be incomparable.** A vendor with no tax setup looked cheaper than one with taxes and could win without a word. The ranking is unchanged, but
   the request now says, right under the total, which vendors have no tax setup and that their totals are before tax and not comparable; the same sentence is on the ranking and on that vendor's flags.
 * **A purchase return is not a delivery.** In the vendor scorecard a receipt line with a negative quantity counted as a delivery (and a late one, if it was posted late). It is left out.
+
+## 0.1.0 (9 Nov 2026)
 
 ### Publishing the engine
 

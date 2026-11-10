@@ -83,6 +83,8 @@ def test_a_tag_must_match_the_version_of_the_package_and_the_files_built():
     assert any("not engine-vX.Y.Z" in p for p in check.tag_problems("v0.1.0", PYPROJECT, [wheel, sdist]))
     assert any("not engine-vX.Y.Z" in p for p in check.tag_problems("engine-v0.1.0-final", PYPROJECT, [wheel, sdist]))
     assert any("nothing was built" in p for p in check.tag_problems(f"engine-v{VERSION}", PYPROJECT, []))
+    # 0.1.0 is on PyPI and PyPI never takes a file name twice: its tag must never pass for a later version
+    assert VERSION != "0.1.0" and any("says" in p for p in check.tag_problems("engine-v0.1.0", PYPROJECT, [wheel, sdist]))
     assert any("does not carry" in p for p in check.tag_problems(f"engine-v{VERSION}", PYPROJECT, ["ai_munimji_engine-0.0.9-py3-none-any.whl"]))
 
 
