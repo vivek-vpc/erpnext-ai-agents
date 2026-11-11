@@ -22,6 +22,9 @@ From the production-readiness review (findings A1 and A2). Nothing changes for a
   answering a reorder request does), and lists all items otherwise, as before. `tests/test_one_item_lookup.py`.
 * **An item whose stock is fine is kept as four fields until the end of the run.** Its whole analysis (the usage series, the reasons, the rules, the policy: tens of kilobytes) is not needed once its status is known to
   be fine; a run over 30,000 items held more than a gigabyte of them.
+* **The vendors can be compared for one reorder, at once.** `ProcurementAgent.run(..., work_orders=[ids])` takes only those work orders, and only those still waiting (one that another run has claimed is left alone, so a reorder is compared
+  once however many runs look at it); the others stay as they are and the snoozed requests whose time has come are not touched, which is the scheduled run's. The Frappe app uses it to compare the vendors within
+  a minute of a person approving a reorder, instead of at the next scheduled run (Group 2, F1). Without the parameter the run is what it was. `tests/test_one_work_order.py`.
 
 ## 0.1.1 (10 Nov 2026)
 

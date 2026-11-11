@@ -15,7 +15,7 @@ import logging
 import math
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timedelta
-from typing import Any, Callable, ContextManager, Optional
+from typing import Any, Callable, ContextManager, Optional, Sequence
 from zoneinfo import ZoneInfo
 
 from ai_munimji_engine.core.approvals.models import ApprovalRecord, Decision, DecisionRefused, DecisionResult
@@ -106,19 +106,27 @@ class ProcurementAgent:
         return self.erp.get_vendor_offers(code, since, QuoteRule(self.today(), cfg.quotation_max_age_days))
 
     # ================================================================== main run
-    def run(self, dry_run: bool = False, batch_size: Optional[int] = None, checkpoint: Optional[Checkpoint] = None, batch_seconds: Optional[float] = None) -> ProcurementReport:
+    def run(self, dry_run: bool = False, batch_size: Optional[int] = None, checkpoint: Optional[Checkpoint] = None, batch_seconds: Optional[float] = None,
+            work_orders: Optional[Sequence[str]] = None) -> ProcurementReport:
         """`batch_size` / `checkpoint` / `batch_seconds`: as for the inventory run, `checkpoint("proposing", done, total)` after every `batch_size` approved reorders, or `batch_seconds` after the last
-        one (at most 200 are taken per run)."""
+        one (at most 200 are taken per run).
+
+        `work_orders`: the ids of the work orders to look at, and no others. Only those that are still waiting are taken, so a work order that another run has already claimed is left alone
+        (the vendor comparison is made once). The others stay as they are, and the snoozed requests whose time has come are not touched: that is the scheduled run's. A person's approval of a
+        reorder uses this to compare the vendors for that one reorder at once; without it every waiting work order is taken, as before."""
         run_id, now = short_id(8), self.clock()
         report = ProcurementReport(run_id=run_id, dry_run=dry_run, started_at=iso(now))
 
-        if not dry_run:                                     # snoozed requests whose time has come are looked at again
-            for p in self.proposals.snoozed_due():
-                self.proposals.update_status(p.id, "superseded", "snooze ended; looked at again")
-                self.workorders.set_status(p.work_order_id, "pending")
-                report.resumed += 1
-
-        waiting = list(reversed(self.workorders.list(status="pending", type_=REORDER_NEEDED, limit=200)))     # oldest first
+        if work_orders is not None:
+            found = (self.workorders.get(wo_id) for wo_id in dict.fromkeys(work_orders))
+            waiting = [wo for wo in found if wo is not None and wo["status"] == "pending" and wo["type"] == REORDER_NEEDED]
+        else:
+            if not dry_run:                                 # snoozed requests whose time has come are looked at again
+                for p in self.proposals.snoozed_due():
+                    self.proposals.update_status(p.id, "superseded", "snooze ended; looked at again")
+                    self.workorders.set_status(p.work_order_id, "pending")
+                    report.resumed += 1
+            waiting = list(reversed(self.workorders.list(status="pending", type_=REORDER_NEEDED, limit=200)))     # oldest first
         proposing = Batches("proposing", len(waiting), batch_size, checkpoint, batch_seconds)
         for wo in waiting:
             try:
