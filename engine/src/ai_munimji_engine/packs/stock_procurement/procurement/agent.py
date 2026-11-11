@@ -21,7 +21,7 @@ from zoneinfo import ZoneInfo
 from ai_munimji_engine.core.approvals.models import ApprovalRecord, Decision, DecisionRefused, DecisionResult
 from ai_munimji_engine.core.approvals.service import ApprovalService, KindHandler, parse_approver
 from ai_munimji_engine.core import acting
-from ai_munimji_engine.core.common import Actor, Clock, iso, short_id, utcnow
+from ai_munimji_engine.core.common import Actor, Batches, Checkpoint, Clock, iso, short_id, utcnow
 from ai_munimji_engine.core.settings_store import SettingsStore
 from ai_munimji_engine.core.toolkit import parse_number
 from ai_munimji_engine.storage import dumps
@@ -106,7 +106,9 @@ class ProcurementAgent:
         return self.erp.get_vendor_offers(code, since, QuoteRule(self.today(), cfg.quotation_max_age_days))
 
     # ================================================================== main run
-    def run(self, dry_run: bool = False) -> ProcurementReport:
+    def run(self, dry_run: bool = False, batch_size: Optional[int] = None, checkpoint: Optional[Checkpoint] = None, batch_seconds: Optional[float] = None) -> ProcurementReport:
+        """`batch_size` / `checkpoint` / `batch_seconds`: as for the inventory run, `checkpoint("proposing", done, total)` after every `batch_size` approved reorders, or `batch_seconds` after the last
+        one (at most 200 are taken per run)."""
         run_id, now = short_id(8), self.clock()
         report = ProcurementReport(run_id=run_id, dry_run=dry_run, started_at=iso(now))
 
@@ -116,22 +118,27 @@ class ProcurementAgent:
                 self.workorders.set_status(p.work_order_id, "pending")
                 report.resumed += 1
 
-        for wo in reversed(self.workorders.list(status="pending", type_=REORDER_NEEDED, limit=200)):     # oldest first
-            report.considered += 1
-            code = wo["payload"].get("item_code", "?")
+        waiting = list(reversed(self.workorders.list(status="pending", type_=REORDER_NEEDED, limit=200)))     # oldest first
+        proposing = Batches("proposing", len(waiting), batch_size, checkpoint, batch_seconds)
+        for wo in waiting:
             try:
-                action = self._handle(wo, dry_run)
-            except Exception as exc:  # noqa: BLE001 - one bad item must not stop the run
-                log.exception("procurement failed for %s", code)
-                report.errors.append(f"{code}: {exc}")
-                continue
-            report.actions.append(action)
-            if action["action"] in ("proposed", "would_propose"):
-                report.proposed += 1
-            elif action["action"] in ("manual", "would_ask_manual"):
-                report.manual += 1
-            else:
-                report.skipped += 1
+                report.considered += 1
+                code = wo["payload"].get("item_code", "?")
+                try:
+                    action = self._handle(wo, dry_run)
+                except Exception as exc:  # noqa: BLE001 - one bad item must not stop the run
+                    log.exception("procurement failed for %s", code)
+                    report.errors.append(f"{code}: {exc}")
+                    continue
+                report.actions.append(action)
+                if action["action"] in ("proposed", "would_propose"):
+                    report.proposed += 1
+                elif action["action"] in ("manual", "would_ask_manual"):
+                    report.manual += 1
+                else:
+                    report.skipped += 1
+            finally:
+                proposing.one()
 
         report.finished_at = iso(self.clock())
         self.runs.add(run_id, AGENT_NAME, report.started_at, report.finished_at, dry_run, dumps(report.to_dict()))

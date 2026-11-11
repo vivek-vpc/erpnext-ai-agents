@@ -22,7 +22,7 @@ from ai_munimji_engine.stores.stock import StockStores
 from ai_munimji_engine.core.approvals.models import ApprovalRecord, Decision
 from ai_munimji_engine.core.approvals.render import render_plain
 from ai_munimji_engine.core.approvals.service import ApprovalService, KindHandler
-from ai_munimji_engine.core.common import Clock, iso, short_id, utcnow
+from ai_munimji_engine.core.common import Batches, Checkpoint, Clock, iso, short_id, slices, utcnow
 from ..settings import Policy
 from ai_munimji_engine.core.settings_store import SettingsError, SettingsStore
 from ai_munimji_engine.core.workorders import REORDER_NEEDED, WorkOrderQueue
@@ -58,6 +58,16 @@ class RunReport:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+@dataclass(frozen=True)
+class _Fine:
+    """What a run keeps of an item whose stock is fine, from its analysis until the loop that reconciles it with earlier alerts: the four things that loop and the sort before it read. The
+    whole analysis (the usage series, the reasons, the rules, the policy) is some tens of kilobytes, and on a site of tens of thousands of items nearly every item is fine."""
+    item_code: str
+    status: str
+    severity: int
+    cover_days_on_hand: Optional[float]
 
 
 def _short_error(exc: Exception) -> str:
@@ -103,7 +113,13 @@ class InventoryAgent:
         return self.clock().astimezone(tz).date()
 
     # ================================================================== main run
-    def run(self, dry_run: bool = False, item_codes: Optional[list[str]] = None) -> RunReport:
+    def run(self, dry_run: bool = False, item_codes: Optional[list[str]] = None, batch_size: Optional[int] = None, checkpoint: Optional[Checkpoint] = None,
+            batch_seconds: Optional[float] = None) -> RunReport:
+        """`batch_size` / `checkpoint`: a long run works through the items in batches and calls `checkpoint(stage, done, total)` at the end of each one ("planning": working out each item's settings;
+        "checking": reading and analysing, which writes nothing; "raising": alerts and requests, worst first). The caller commits there. "raising" is also cut by the clock: `batch_seconds` is the longest it goes
+        between two checkpoints, so that what it has written is not locked for longer than that (a person answering a request that the run has just replaced waits that long). The result is the same as without batches: the same items are
+        analysed with the same figures and acted on in the same order, so a run that stops half way and is run again acts on each item once (the alerts it already raised are
+        found by the duplicate checks of `_reconcile` and `_notify`)."""
         run_id = short_id(8)
         now = self.clock()
         report = RunReport(run_id=run_id, dry_run=dry_run, started_at=iso(now))
@@ -111,36 +127,47 @@ class InventoryAgent:
         today = self.today()
 
         try:
-            items = [i for i in self.erp.list_items() if not item_codes or i.code in item_codes]
+            items = self._items(item_codes)
         except Exception as exc:  # noqa: BLE001 - the ERP is unreachable or refused us: record the failed run instead of crashing
             return self._failed_run(report, exc, dry_run)
         planned: list[tuple[ItemInfo, Policy, dict[str, str]]] = []
+        planning = Batches("planning", len(items), batch_size, checkpoint)         # working out each item's settings reads the settings store: minutes on a large site, and the caller's lease must be kept
         for it in items:
             try:
-                policy, sources = self.settings.policy_with_sources(it.code, it.group)
-            except SettingsError as exc:
-                report.errors.append(f"{it.code}: {exc}")
-                continue
-            if policy.enabled:
-                planned.append((it, policy, sources))
-
-        analyses: list[tuple[Analysis, Policy, dict[str, str]]] = []
-        if planned:
-            try:
-                stock, usage = self._load(planned, today)
-            except Exception as exc:  # noqa: BLE001
-                return self._failed_run(report, exc, dry_run)
-            sales = self._sales(planned, today)
-            for it, policy, sources in planned:
-                st = stock.get(it.code)
-                if st is None:
-                    report.errors.append(f"{it.code}: no stock data returned by the ERP")
-                    continue
                 try:
-                    analyses.append((analyze_item(it, st, usage.get(it.code, []), policy, today, self._windows(it, today), sales.get(it.code, ())), policy, sources))
-                except Exception as exc:  # noqa: BLE001 - one bad item must not stop the run
-                    log.exception("analysis failed for %s", it.code)
-                    report.errors.append(f"{it.code}: analysis failed ({exc})")
+                    policy, sources = self.settings.policy_with_sources(it.code, it.group)
+                except SettingsError as exc:
+                    report.errors.append(f"{it.code}: {exc}")
+                    continue
+                if policy.enabled:
+                    planned.append((it, policy, sources))
+            finally:
+                planning.one()
+
+        analyses: list[tuple[Analysis | _Fine, Optional[Policy], Optional[dict[str, str]]]] = []
+        if planned:
+            history = self._history_by_warehouses(planned)
+            reading = Batches("checking", len(planned), batch_size, checkpoint)
+            for group in slices(planned, batch_size):
+                try:
+                    stock, usage = self._load(group, today, history)
+                except Exception as exc:  # noqa: BLE001
+                    return self._failed_run(report, exc, dry_run)
+                sales = self._sales(group, today)
+                for it, policy, sources in group:
+                    try:
+                        st = stock.get(it.code)
+                        if st is None:
+                            report.errors.append(f"{it.code}: no stock data returned by the ERP")
+                            continue
+                        try:
+                            a = analyze_item(it, st, usage.get(it.code, []), policy, today, self._windows(it, today), sales.get(it.code, ()))
+                            analyses.append((_Fine(a.item_code, a.status, a.severity, a.cover_days_on_hand), None, None) if a.status == STATUS_OK else (a, policy, sources))
+                        except Exception as exc:  # noqa: BLE001 - one bad item must not stop the run
+                            log.exception("analysis failed for %s", it.code)
+                            report.errors.append(f"{it.code}: analysis failed ({exc})")
+                    finally:
+                        reading.one()
 
         report.checked = len(analyses)
         # Worst first so the per-run cap never hides a critical item behind routine ones.
@@ -148,44 +175,48 @@ class InventoryAgent:
 
         budget = system.max_alerts_per_run
         notice_budget = system.max_notices_per_run
+        acting = Batches("raising", len(analyses), batch_size, checkpoint, batch_seconds)
         for a, policy, sources in analyses:
-            if a.status == STATUS_OK:
-                report.ok += 1
-            elif a.status == STATUS_EARLY:
-                report.early_warnings += 1
-            else:
-                report.breaches += 1
             try:
                 if a.status == STATUS_OK:
-                    if not dry_run:
-                        self._clear_notices(a.item_code)
+                    report.ok += 1
+                elif a.status == STATUS_EARLY:
+                    report.early_warnings += 1
                 else:
-                    ended = self._end_quiet_period_if_order_done(a, dry_run)
-                    if ended:
-                        report.actions.append(ended)
-                    # the information-only alert goes first; the request to reorder (if any) follows it
-                    note = self._notify(a, policy, run_id, dry_run, notice_budget, request_follows=a.status != STATUS_EARLY or not system.stock_alerts)
-                    if note:
-                        report.actions.append(note)
-                        if note["action"] in ("new_notice", "would_notify"):
-                            notice_budget -= 1
-                            report.new_notices += 1
-                if a.status == STATUS_EARLY and system.stock_alerts:
-                    action = {"item_code": a.item_code, "status": a.status, "severity": SEV_NAMES[a.severity], "action": "skipped:alert_only"}     # an early warning only alerts
-                else:
-                    action = self._reconcile(a, sources, run_id, dry_run, budget)
-            except Exception as exc:  # noqa: BLE001
-                log.exception("reconcile failed for %s", a.item_code)
-                report.errors.append(f"{a.item_code}: {exc}")
-                continue
-            if action["action"] in ("new_alert", "would_alert"):
-                budget -= 1
-                report.new_alerts += 1
-            elif action["action"] == "resolved":
-                report.resolved += 1
-            elif action["action"].startswith("skipped"):
-                report.skipped += 1
-            report.actions.append(action)
+                    report.breaches += 1
+                try:
+                    if a.status == STATUS_OK:
+                        if not dry_run:
+                            self._clear_notices(a.item_code)
+                    else:
+                        ended = self._end_quiet_period_if_order_done(a, dry_run)
+                        if ended:
+                            report.actions.append(ended)
+                        # the information-only alert goes first; the request to reorder (if any) follows it
+                        note = self._notify(a, policy, run_id, dry_run, notice_budget, request_follows=a.status != STATUS_EARLY or not system.stock_alerts)
+                        if note:
+                            report.actions.append(note)
+                            if note["action"] in ("new_notice", "would_notify"):
+                                notice_budget -= 1
+                                report.new_notices += 1
+                    if a.status == STATUS_EARLY and system.stock_alerts:
+                        action = {"item_code": a.item_code, "status": a.status, "severity": SEV_NAMES[a.severity], "action": "skipped:alert_only"}     # an early warning only alerts
+                    else:
+                        action = self._reconcile(a, sources, run_id, dry_run, budget)
+                except Exception as exc:  # noqa: BLE001
+                    log.exception("reconcile failed for %s", a.item_code)
+                    report.errors.append(f"{a.item_code}: {exc}")
+                    continue
+                if action["action"] in ("new_alert", "would_alert"):
+                    budget -= 1
+                    report.new_alerts += 1
+                elif action["action"] == "resolved":
+                    report.resolved += 1
+                elif action["action"].startswith("skipped"):
+                    report.skipped += 1
+                report.actions.append(action)
+            finally:
+                acting.one()
 
         report.finished_at = iso(self.clock())
         self.runs.add(run_id, AGENT_NAME, report.started_at, report.finished_at, dry_run, dumps(report.to_dict()))
@@ -234,8 +265,16 @@ class InventoryAgent:
                 self.approvals.cancel(rec.id, "the stock check is working again")
 
     # ================================================================== on-demand analysis
+    def _items(self, item_codes: Optional[list[str]] = None) -> list[ItemInfo]:
+        """The ERP's items, or only `item_codes`. An ERP that can read some items without listing every one (the optional `get_items(codes)`, like `get_open_sales_orders` optional
+        for the forecast) is asked for just those, so that looking at one item does not read them all."""
+        read = getattr(self.erp, "get_items", None)
+        if item_codes and read is not None:
+            return list(read(list(item_codes)))
+        return [i for i in self.erp.list_items() if not item_codes or i.code in item_codes]
+
     def analyze_one(self, item_code: str) -> tuple[Analysis, dict[str, str]]:
-        item = next((i for i in self.erp.list_items() if i.code == item_code), None)
+        item = next((i for i in self._items([item_code]) if i.code == item_code), None)
         if item is None:
             raise KeyError(f"Unknown item {item_code!r}")
         policy, sources = self.settings.policy_with_sources(item.code, item.group)
@@ -252,9 +291,20 @@ class InventoryAgent:
         cal = self.settings.calendar()
         return active_windows(cal.events, item.code, item.group, today) if cal.enabled and cal.events else []
 
-    def _load(self, planned: list[tuple[ItemInfo, Policy, dict[str, str]]], today: date) -> tuple[dict[str, Any], dict[str, Any]]:
+    @staticmethod
+    def _history_by_warehouses(planned: list[tuple[ItemInfo, Policy, dict[str, str]]]) -> dict[tuple[str, ...], int]:
+        """The longest history any planned item asks for, per set of warehouses: the window every item of that set is read for, whichever batch it is in."""
+        longest: dict[tuple[str, ...], int] = {}
+        for _, p, _ in planned:
+            key = tuple(sorted(p.warehouses))
+            longest[key] = max(longest.get(key, 0), p.history_days)
+        return longest
+
+    def _load(self, planned: list[tuple[ItemInfo, Policy, dict[str, str]]], today: date,
+              history_by: Optional[dict[tuple[str, ...], int]] = None) -> tuple[dict[str, Any], dict[str, Any]]:
         """Stock and usage for these items. Items whose policy names different warehouses are fetched separately,
-        so a warehouse filter set on one group or item only affects that group or item."""
+        so a warehouse filter set on one group or item only affects that group or item. `history_by` (from `_history_by_warehouses` over the whole run) keeps the window of
+        an item the same however the run is cut into batches; without it the window is the longest among `planned`."""
         by_warehouses: dict[tuple[str, ...], list[tuple[ItemInfo, Policy, dict[str, str]]]] = {}
         for entry in planned:
             by_warehouses.setdefault(tuple(sorted(entry[1].warehouses)), []).append(entry)
@@ -262,7 +312,7 @@ class InventoryAgent:
         usage: dict[str, Any] = {}
         for warehouses, entries in by_warehouses.items():
             codes = [it.code for it, _, _ in entries]
-            history = max(p.history_days for _, p, _ in entries)
+            history = (history_by or {}).get(warehouses) or max(p.history_days for _, p, _ in entries)
             wh = list(warehouses) or None
             stock.update(self.erp.get_stock(codes, wh))
             usage.update(self.erp.get_consumption(codes, today - timedelta(days=history), today, wh))
@@ -414,10 +464,10 @@ class InventoryAgent:
             return {**base, "action": "skipped:alert_cap_reached"}
         if dry_run:
             return {**base, "action": "would_notify"}
-        for old in self.notices.active_for_item(a.item_code):      # the new alert replaces an older one that is still waiting
-            self.notices.set_status(old.id, "superseded")
+        for old in self.notices.active_for_item(a.item_code):      # the new alert replaces an older one that is still waiting (its request first, then its status: see `_close`)
             if old.approval_id:
                 self.approvals.cancel(old.approval_id, f"replaced by a newer {level.lower()} stock alert")
+            self.notices.set_status(old.id, "superseded")
         with self.transaction():
             notice = self.notices.create(a.item_code, level, None)
             req = self._with_extras(build_alert_request(a, notice.id, level, request_follows, int(a.policy.get("snooze_days", 3))), a)
@@ -452,9 +502,9 @@ class InventoryAgent:
 
     def _clear_notices(self, item_code: str) -> None:
         for n in self.notices.active_for_item(item_code):
-            self.notices.set_status(n.id, "cleared")
-            if n.approval_id:
+            if n.approval_id:                                      # its request first, then its status: see `_close`
                 self.approvals.cancel(n.approval_id, "stock is back above your limits")
+            self.notices.set_status(n.id, "cleared")
 
     def _on_notice_decision(self, record: ApprovalRecord, decision: Decision) -> None:
         notice = self.notices.by_approval(record.id)
@@ -467,10 +517,12 @@ class InventoryAgent:
             self.notices.set_status(notice.id, "snoozed", snoozed_until=self.clock() + timedelta(days=days))
 
     def _close(self, alert: Alert, status: str, note: str) -> None:
-        was_awaiting = alert.status == "awaiting"
-        self.alerts.update_status(alert.id, status, note)
-        if was_awaiting and alert.approval_id:
+        # The request is cancelled FIRST and the alert's status set after. A person's answer takes the request's row and then the alert's (`decide`, then `_on_decision`); a run that took the
+        # two the other way round could deadlock with that person, one holding each row and asking for the other. (An awaiting alert is set to "cancelled" by the cancellation itself,
+        # and to `status` right after: the same end state as before.)
+        if alert.status == "awaiting" and alert.approval_id:
             self.approvals.cancel(alert.approval_id, note)
+        self.alerts.update_status(alert.id, status, note)
 
     # ================================================================== approval outcomes
     def _on_decision(self, record: ApprovalRecord, decision: Decision) -> None:
