@@ -1,8 +1,8 @@
 # Changelog
 
-What changed for someone who runs the service or builds on the engine. `ai-munimji-engine` 0.1.0 (9 Nov 2026) is on PyPI and cannot be changed; 0.1.1 carries the fixes after review; 0.1.2 adds what a large site needs.
+What changed for someone who runs the service or builds on the engine. `ai-munimji-engine` 0.1.0 (9 Nov 2026) is on PyPI and cannot be changed; 0.1.1 carries the fixes after review; 0.1.2 adds what a large site needs; 0.1.3 carries Telegram.
 
-## Unreleased
+## 0.1.3 (12 Nov 2026)
 
 ### Added: Telegram in the engine (for the AI Munimji app; nothing changes for the service)
 
