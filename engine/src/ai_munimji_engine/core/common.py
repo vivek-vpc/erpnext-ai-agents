@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -79,3 +80,33 @@ def fmt_num(value: float | None, digits: int = 1) -> str:
     if abs(value - round(value)) < 10 ** (-digits - 1):
         return f"{int(round(value)):,}"
     return f"{value:,.{digits}f}"
+
+
+# A long run reports where it is, at the end of each batch of work: (what it is doing, how many it has done, how many there are). Whoever runs it uses the call to commit what
+# the batch wrote, keep its lease and note the progress; an exception raised from it stops the run (what the batches before it did stays done).
+Checkpoint = Callable[[str, int, int], None]
+
+
+class Batches:
+    """Counts the items of one stage of a run and calls the checkpoint after every `size` of them, after the last, and, when `seconds` is given, whenever that long has passed since the last
+    call (checked between two items). The time limit is for a stage that writes: what an item writes stays locked until the checkpoint commits, and a person waiting for a row of it
+    waits that long, so the stage is cut by the clock as well as by the count. With no size, or no checkpoint, it does nothing."""
+
+    def __init__(self, stage: str, total: int, size: Optional[int], checkpoint: Optional[Checkpoint], seconds: Optional[float] = None,
+                 clock: Callable[[], float] = time.monotonic) -> None:
+        self.stage, self.total, self.size, self.checkpoint, self.seconds, self.clock = stage, total, size, checkpoint, seconds, clock
+        self.done, self.last = 0, clock()
+
+    def one(self) -> None:
+        self.done += 1
+        if not (self.checkpoint and self.size):
+            return
+        due = self.done % self.size == 0 or self.done == self.total or (self.seconds is not None and self.clock() - self.last >= self.seconds)
+        if due:
+            self.checkpoint(self.stage, self.done, self.total)
+            self.last = self.clock()
+
+
+def slices(items: list, size: Optional[int]) -> list[list]:
+    """`items` cut into consecutive pieces of `size` (all of it in one piece when there is no size)."""
+    return [items[i : i + size] for i in range(0, len(items), size)] if size and size > 0 else [items]

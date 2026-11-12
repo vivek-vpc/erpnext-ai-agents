@@ -2,6 +2,30 @@
 
 What changed for someone who runs the service or builds on the engine. `ai-munimji-engine` 0.1.0 (9 Nov 2026) is on PyPI and cannot be changed; 0.1.1 carries the fixes after review.
 
+## Unreleased
+
+### Added for a large site (engine 0.1.2 when it is released)
+
+From the production-readiness review (findings A1 and A2). Nothing changes for a caller that does not use the new parameters: the standalone service runs as before.
+
+* **A long stock check can work in batches.** `InventoryAgent.run(dry_run, item_codes, batch_size, checkpoint)` and `ProcurementAgent.run(dry_run, batch_size, checkpoint)` take an optional `batch_size` and a
+  `checkpoint(stage, done, total)` that they call at the end of every batch ("checking": reading and analysing, which writes nothing; "raising": alerts and requests, worst first; "proposing": purchase proposals). The
+  caller commits there, renews its lease and notes how far the run has got; an exception raised from the checkpoint stops the run, and what the batches before it did stays done. The result is the same as without
+  batches: the same items are analysed with the same figures (the longest history any item of a set of warehouses asks for is the window for all of them) and acted on in the same order, so a run that stops half way
+  and is run again acts on each item once (the duplicate checks of `_reconcile` and `_notify` find what the first run raised). `tests/test_batched_runs.py`. Helpers: `Batches` and `slices` in `core/common.py`.
+* **The stages that write are also cut by the clock.** `run(..., batch_seconds=)` ends a batch of the "raising" and "proposing" stages that long after the last checkpoint, however few items it holds: what an item
+  writes stays locked until the caller commits, and a person waiting for that row waits that long (`core/common.py`: `Batches(seconds=)`).
+* **A run takes a request's row before its alert's, as a person's answer does.** Replacing or closing an alert, and replacing or clearing a stock alert, wrote the alert's (or stock alert's) status and then
+  cancelled its request; a person's answer locks the request and then the alert. Run at the same moment, each could hold one row and wait for the other, and the database ended one of them with a deadlock. The request is
+  now cancelled first (the end state is the same). `tests/test_batched_runs.py`.
+* **A look at one item no longer lists every item.** An ERP client may offer an optional `get_items(codes)`; the inventory agent uses it for a run over named items and for the analysis of one item (which is what
+  answering a reorder request does), and lists all items otherwise, as before. `tests/test_one_item_lookup.py`.
+* **An item whose stock is fine is kept as four fields until the end of the run.** Its whole analysis (the usage series, the reasons, the rules, the policy: tens of kilobytes) is not needed once its status is known to
+  be fine; a run over 30,000 items held more than a gigabyte of them.
+* **The vendors can be compared for one reorder, at once.** `ProcurementAgent.run(..., work_orders=[ids])` takes only those work orders, and only those still waiting (one that another run has claimed is left alone, so a reorder is compared
+  once however many runs look at it); the others stay as they are and the snoozed requests whose time has come are not touched, which is the scheduled run's. The Frappe app uses it to compare the vendors within
+  a minute of a person approving a reorder, instead of at the next scheduled run (Group 2, F1). Without the parameter the run is what it was. `tests/test_one_work_order.py`.
+
 ## 0.1.1 (10 Nov 2026)
 
 ### Fixed after review
