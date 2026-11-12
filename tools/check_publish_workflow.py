@@ -1,7 +1,7 @@
 """Checks of the workflow that publishes the engine (.github/workflows/publish-engine.yml), run by that workflow's dry run on every pull request and by tests/test_publish_workflow.py.
 
     python tools/check_publish_workflow.py workflow          # the names PyPI was registered with, the permissions, the pins
-    python tools/check_publish_workflow.py tag engine-v0.1.2 # on a tag: the tag is engine-v + the version of engine/pyproject.toml, and the files in dist/ carry it
+    python tools/check_publish_workflow.py tag engine-v0.1.3 # on a tag: the tag is engine-v + the version of engine/pyproject.toml, and the files in dist/ carry it
 
 It prints each problem and exits 1 if there is one. It publishes nothing and needs no network.
 """

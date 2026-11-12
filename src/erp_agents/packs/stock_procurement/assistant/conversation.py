@@ -13,7 +13,6 @@ The model can take a minute, so messages are handled on a small pool of worker t
 from __future__ import annotations
 
 import logging
-import re
 import time
 from typing import Any, Callable, Optional
 
@@ -22,28 +21,15 @@ from ai_munimji_engine.runtime import Awaiting, ConversationMemory, InlineJobRun
 from ai_munimji_engine.core.approvals.channels.base import Channel
 from ai_munimji_engine.core.approvals.models import DecisionResult, InboundEvent, Recipient
 from ai_munimji_engine.core.approvals.router import ApprovalRouter
+# the part of a typed message that needs no AI (the answer to the bot's question, a number in reply to an order) is the engine's, which an application without a chat uses too
+from ai_munimji_engine.core.approvals.typed_answers import (  # noqa: F401 - parse_qty, YES_NO, CANCEL_WORDS, QTY, ORDER_KINDS, WAIT_SECONDS are imported from here by the tests
+    CANCEL_WORDS, ORDER_KINDS, QTY, WAIT_SECONDS, YES_NO, answer_prompt, parse_qty, pick, quantity_in_reply, request_replied_to, say,
+)
 from erp_agents.core.resilience import Limits, RateLimited, ResilienceSettings
 from .chat import ChatLimit
 
 log = logging.getLogger(__name__)
-WAIT_SECONDS = 600                 # how long the bot waits for the answer to its own question
 CONTEXT_SECONDS = 900              # "compare vendors" after a question about an item still means that item, for this long
-ORDER_KINDS = ("procurement.po", "procurement.pr")
-YES_NO = {"y": "yes", "yes": "yes", "yeah": "yes", "yep": "yes", "ok": "yes", "okay": "yes", "sure": "yes", "confirm": "yes", "yes cancel it": "yes", "yes, cancel it": "yes",
-          "n": "no", "no": "no", "nope": "no", "no keep it": "no", "no, keep it": "no", "keep it": "no"}
-CANCEL_WORDS = {"cancel", "no", "stop", "never mind", "nevermind", "forget it", "skip", "leave it"}
-# "800", "qty 800", "quantity: 800", "make it 800", "change to 800", "1,200", "800 pcs"
-QTY = re.compile(r"(?:(?:set\s+)?(?:the\s+)?(?:qty|quantity)|make\s+it|change\s+(?:it\s+)?to|order|new\s+quantity)?\s*[:=]?\s*(\d[\d,]*(?:\.\d+)?)\s*[a-z]{0,12}", re.I)
-
-
-def parse_qty(text: str) -> Optional[float]:
-    m = QTY.fullmatch((text or "").strip())
-    if not m:
-        return None
-    try:
-        return float(m.group(1).replace(",", ""))
-    except ValueError:
-        return None
 
 
 class Conversation:
@@ -104,44 +90,18 @@ class Conversation:
 
     # ------------------------------------------------------------------ 1. the answer to the bot's own question
     def _answer_prompt(self, waiting: Awaiting, text: str, actor: Any, event: InboundEvent, reply: Callable[[str], Any]) -> bool:
-        if waiting.action == "change_qty":
-            qty = parse_qty(text)
-            if qty is None:
-                return False
-            self._say(self.approvals.decide(waiting.approval_id, "change_qty", actor, event.channel, {"qty": qty}, defer=True), reply)
-            return True
-        if waiting.action == "change_vendor":
-            pick = self._pick(waiting.choices, text)
-            if pick is None:
-                return False
-            self._say(self.approvals.decide(waiting.approval_id, "change_vendor", actor, event.channel, {"supplier": pick}, defer=True), reply)
-            return True
-        if waiting.action == "cancel_order":                       # "Cancel the order? Reply yes or no": anything but a clear yes or no is a new question
-            answer = YES_NO.get(text.strip().lower().rstrip(".!"))
-            if answer is None:
-                return False
-            self._say(self.approvals.decide(waiting.approval_id, "cancel_order", actor, event.channel, {"confirm": answer}, defer=True), reply)
-            return True
-        return False
+        return answer_prompt(self.approvals, waiting, text, actor, event, reply)
 
     @staticmethod
     def _pick(choices: list[dict[str, str]], text: str) -> Optional[str]:
-        t = text.strip().lower().rstrip(".)")
-        if t.isdigit() and 1 <= int(t) <= len(choices):
-            return choices[int(t) - 1]["id"]
-        named = [c for c in choices if t and (t in c["label"].lower().split(":")[0] or t == c["id"].lower())]
-        return named[0]["id"] if len(named) == 1 else None
+        return pick(choices, text)
 
     def _say(self, res: DecisionResult, reply: Callable[[str], Any]) -> None:
-        reply(res.message if res.status != "need_input" else (res.prompt or res.message))
-        if res.after is not None:                                   # a revised request is sent after this reply, so it is the last message in the chat
-            res.after()
+        say(res, reply)
 
     # ------------------------------------------------------------------ 2. a reply to one of the bot's request messages
     def _request_replied_to(self, event: InboundEvent) -> Optional[str]:
-        if not event.reply_to:
-            return None
-        return self.approvals.approval_for_message(event.channel, str(event.reply_to), str(event.sender))
+        return request_replied_to(self.approvals, event)
 
     def _resend(self, approval_id: str, recipient: Recipient, event: InboundEvent) -> None:
         record = self.approvals.get(approval_id)
@@ -153,11 +113,8 @@ class Conversation:
         if record is None:
             self._chat(text, actor, (event.channel, event.sender), reply, resend=resend)
             return
-        if record.status == "pending" and record.kind in ORDER_KINDS:
-            qty = parse_qty(text)
-            if qty is not None:                                     # a number in reply to an order request is the new quantity
-                self._say(self.approvals.decide(approval_id, "change_qty", actor, event.channel, {"qty": qty}, defer=True), reply)
-                return
+        if quantity_in_reply(self.approvals, record, text, actor, event, reply):     # a number in reply to an order request is the new quantity
+            return
         item = record.request.facts.get("item_code")
         cfg = self.assistant.settings.assistant()
         if cfg.enabled:

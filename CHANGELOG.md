@@ -1,6 +1,25 @@
 # Changelog
 
-What changed for someone who runs the service or builds on the engine. `ai-munimji-engine` 0.1.0 (9 Nov 2026) is on PyPI and cannot be changed; 0.1.1 carries the fixes after review; 0.1.2 adds what a large site needs.
+What changed for someone who runs the service or builds on the engine. `ai-munimji-engine` 0.1.0 (9 Nov 2026) is on PyPI and cannot be changed; 0.1.1 carries the fixes after review; 0.1.2 adds what a large site needs; 0.1.3 carries Telegram.
+
+## 0.1.3 (12 Nov 2026)
+
+### Added: Telegram in the engine (for the AI Munimji app; nothing changes for the service)
+
+The Telegram channel, the handling of what comes back from a messaging channel, and the part of a typed message that needs no AI now live in the engine, so the standalone service and a
+Frappe app run the same code. Behaviour is unchanged for the service: its own tests (`tests/test_telegram.py`, `test_inbound_dedup.py`, `test_channels.py`, the stock pack's
+`test_conversation.py`) pass as they were.
+
+* **`core/approvals/channels/telegram.py`: `TelegramChannel`**, moved from the service. It makes no network call of its own: it is given `http` (an object with `post(url, json=, timeout=)`), so the
+  engine imports no HTTP library (`tests/test_engine_imports.py`). The service passes a `requests` session that refuses redirects; a Frappe site passes its own. New, all optional and
+  defaulting to what the service did: `throttle` (the "one answer per stranger per 30 seconds" memory, so that a site with several processes can share it), `offset` (where polling has
+  got to), `timeout_for` (shorter calls for the tidying-up a person's answer waits for), and the bot's words (`product`, `bot_description`, `known_help`).
+* **`core/approvals/inbound.py`: `process_inbound`**, moved from the service (it imports only engine parts); `erp_agents.core.approvals.inbound` re-exports it.
+* **`core/approvals/typed_answers.py`**: `parse_qty`, `pick`, `answer_prompt` (the answer to "How many?", "Which vendor?", "Cancel the order?"), `quantity_in_reply` (a number in reply to an order
+  request) and `TypedConversation`, the conversation of an application with no AI chat: it takes those two cases and says in one sentence where to go for the rest. The service's
+  `Conversation` calls the same functions and keeps the AI chat for everything else.
+* Tests: `tests/test_telegram_channel.py` (28), `tests/test_inbound_process.py` (35), run over the engine's own in-memory stores; eleven deliberate breakages (the secret not checked, the token not hidden,
+  groups accepted, a duplicate update handled twice, a stranger's press accepted, a late answer taken, ...) each turn one of them red.
 
 ## 0.1.2 (12 Nov 2026)
 
