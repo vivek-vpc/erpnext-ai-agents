@@ -1058,7 +1058,7 @@ class ChatService:
             lines.append(f"{n}: not found in ERPNext")
         if not lines:
             what = " and ".join({"Purchase Order": "purchase orders", "Material Request": "purchase requisitions", "Purchase Receipt": "purchase receipts"}[k] for k in (plan.doctypes or ["Purchase Order", "Material Request"]))
-            return Answer("document_status", f"I found no {what}" + (f" for {plan.items[0].name} ({plan.items[0].code})" if plan.items else "") + (f" with that status" if plan.status else "") + (f" in the last {plan.since_days} days." if since else "."),
+            return Answer("document_status", f"I found no {what}" + (f" for {plan.items[0].name} ({plan.items[0].code})" if plan.items else "") + (" with that status" if plan.status else "") + (f" in the last {plan.since_days} days." if since else "."),
                           follow_ups=["What is running low?"], items=[i.code for i in plan.items[:1]])
         counts: dict[str, int] = {}
         for d in docs:
