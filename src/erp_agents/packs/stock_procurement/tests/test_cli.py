@@ -29,3 +29,11 @@ def test_analyze_resports_unknown_item(demo_config, capsys):
 
     assert result == 1
     assert "Unknown item 'NOT-A-REAL-ITEM'" in capsys.readouterr().out
+
+
+def test_policy_requires_key_for_item_scope(demo_config, capsys):
+    result = main(["--config", str(demo_config), "policy", "show", "--scope", "item"])
+
+    assert result == 2
+    output = capsys.readouterr().out
+    assert "--key is required for group/item scope" in output
