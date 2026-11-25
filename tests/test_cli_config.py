@@ -55,7 +55,9 @@ def test_cli_policy_roundtrip_and_validation(cfg_file, capsys):
     out = capsys.readouterr().out
     assert "min_qty" in out and "item 'BOLT-M8' override" in out
     assert main(["--config", cfg_file, "policy", "set", "--scope", "global", "min_qty=-5"]) == 1
-    assert "greater than or equal to 0" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert output.startswith("error:")
+    assert "greater than or equal to 0" in output
     assert main(["--config", cfg_file, "policy", "audit", "--scope", "item", "--key", "BOLT-M8"]) == 0
     assert "min_qty" in capsys.readouterr().out
 
