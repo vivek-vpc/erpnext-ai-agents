@@ -136,6 +136,12 @@ def test_switched_off_the_pack_commands_explain_themselves(make_app, clock, tmp_
     cfg.write_text(f"database: {{path: '{(tmp_path / 'a.db').as_posix()}'}}\nerp: {{type: mock}}\npacks:\n  enabled:\n    {STOCK}: false\n", encoding="utf-8")
     assert main(["--config", str(cfg), "run-once", "--dry-run"]) == 1
     assert "belongs to the stock_procurement pack, which is switched off" in capsys.readouterr().out
+    assert main(["--config", str(cfg), "analyze", "BOLT-M8"]) == 1
+    assert "which is switched off" in capsys.readouterr().out
+    assert main(["--config", str(cfg), "policy", "show"]) == 1
+    assert "which is switched off" in capsys.readouterr().out
+    assert main(["--config", str(cfg), "alerts"]) == 1
+    assert "which is switched off" in capsys.readouterr().out
     assert main(["--config", str(cfg), "agents", "brief"]) == 1
     assert "belongs to a pack that is switched off" in capsys.readouterr().out
     assert main(["--config", str(cfg), "agents", "status"]) == 0                                         # a generic action still works
